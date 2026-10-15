@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Original glyph, drawn for this plugin (no third-party artwork): a magnifying glass over a scan line. -->
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <rect width="80" height="80" rx="8" fill="#2F6F73"/>
+  <circle cx="35" cy="35" r="15" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+  <path d="M46 46 62 62M26 35h18" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+</svg>

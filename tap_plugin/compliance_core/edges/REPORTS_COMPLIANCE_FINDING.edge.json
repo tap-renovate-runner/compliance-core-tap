@@ -1,0 +1,17 @@
+{
+  "slug": "REPORTS_COMPLIANCE_FINDING__compliance_core",
+  "name": "Reports Compliance Finding",
+  "description": "A scan run reports a compliance finding it saw. A finding is reported by the latest run that saw it; earlier runs are history, not edges. A scanner with no runs uses DETECTS_COMPLIANCE_FINDING instead.",
+  "sources": [
+    "compliance_core__compliance_scan_run"
+  ],
+  "targets": [
+    "compliance_core__compliance_finding"
+  ],
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "finding"
+  }
+}

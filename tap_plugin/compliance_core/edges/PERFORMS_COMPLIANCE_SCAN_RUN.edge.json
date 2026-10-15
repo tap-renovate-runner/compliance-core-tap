@@ -1,0 +1,17 @@
+{
+  "slug": "PERFORMS_COMPLIANCE_SCAN_RUN__compliance_core",
+  "name": "Performs Compliance Scan Run",
+  "description": "A scanner performs a scan run: the installed instance executed, and this is that execution. Each run has exactly one scanner; a scanner has many runs over time.",
+  "sources": [
+    "compliance_core__compliance_scanner"
+  ],
+  "targets": [
+    "compliance_core__compliance_scan_run"
+  ],
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "scan-run"
+  }
+}

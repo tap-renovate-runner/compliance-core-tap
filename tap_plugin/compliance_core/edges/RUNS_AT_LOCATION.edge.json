@@ -1,0 +1,25 @@
+{
+  "slug": "RUNS_AT_LOCATION__compliance_core",
+  "name": "Runs At Location",
+  "description": "A scanner is installed at, or a scan run executed at, a place: the node where it lives (today the github_core platform node for github.com; later the workflow or job node, or the actions run for a scan run, when a collector puts one on the grid). Wildcard target because the place is whatever the producer's world has (a workflow, a host, a platform), and compliance_core must not name a producer's types. The locator property keeps the text the data gave for the place, so the location survives the day its node is not yet on the grid.",
+  "sources": [
+    "compliance_core__compliance_scanner",
+    "compliance_core__compliance_scan_run"
+  ],
+  "property_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "locator": {
+        "type": "string",
+        "description": "The place as the data gave it, verbatim (unified-systems-com/tap/.github/workflows/publish-images.yml:scan)."
+      }
+    }
+  },
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "scanner"
+  }
+}
