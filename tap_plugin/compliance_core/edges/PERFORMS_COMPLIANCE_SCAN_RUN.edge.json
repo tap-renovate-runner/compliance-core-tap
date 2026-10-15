@@ -1,7 +1,7 @@
 {
   "slug": "PERFORMS_COMPLIANCE_SCAN_RUN__compliance_core",
   "name": "Performs Compliance Scan Run",
-  "description": "A scanner performs a scan run: the installed instance executed, and this is that execution. Each run has exactly one scanner; a scanner has many runs over time.",
+  "description": "A scanner performs a scan run: the installed instance executed, and this is that execution. A run is performed by one scanner and a scanner performs many runs over time; the one-scanner-per-run rule is the producer's to keep, because the plugin's edge definitions carry no cardinality and cannot refuse a second scanner.",
   "sources": [
     "compliance_core__compliance_scanner"
   ],

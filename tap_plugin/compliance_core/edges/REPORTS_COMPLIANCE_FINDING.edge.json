@@ -1,7 +1,7 @@
 {
   "slug": "REPORTS_COMPLIANCE_FINDING__compliance_core",
   "name": "Reports Compliance Finding",
-  "description": "A scan run reports a compliance finding it saw. A finding is reported by the latest run that saw it; earlier runs are history, not edges. A scanner with no runs uses DETECTS_COMPLIANCE_FINDING instead.",
+  "description": "A scan run reports a compliance finding it saw. By convention a finding is reported by the latest run that saw it and earlier runs are history, not edges; keeping only the latest is the producer's to do, because the plugin's edge definitions carry no cardinality and cannot refuse a second run. A scanner with no runs uses DETECTS_COMPLIANCE_FINDING instead.",
   "sources": [
     "compliance_core__compliance_scan_run"
   ],

@@ -428,7 +428,9 @@ Five edges, each its own mechanical relationship, all references (none is contai
 
 **`CONCERNS_COMPLIANCE_VULNERABILITY`** is named after `CONCERNS_COMPLIANCE_CONTROL`. Its `fixed_versions` is the fix in the component the finding is about, because the same vulnerability is fixed at a different version in each component. `[]` means the source looked and named no fix; an absent property means it was not observed.
 
-**`REPORTS_COMPLIANCE_FINDING`** goes from the run to the finding: a finding is reported by the latest run that saw it; earlier runs are history, not edges.
+**`REPORTS_COMPLIANCE_FINDING`** goes from the run to the finding. By convention a finding is reported by the latest run that saw it and earlier runs are history, not edges.
+
+**Cardinality is the producer's.** A run has one scanner and a finding has one reporting run, but edge definitions carry no cardinality and identity is `(type, source, target)`, so the plugin cannot refuse a second scanner for one run or a second run for one finding; keeping to one is the producer's job (`req-compliance-core-scan-edges-7`).
 
 **`DETECTS_COMPLIANCE_FINDING`** exists only for a tool that has no runs (Dependabot, a continuous service); a tool with runs reports through `PERFORMS_COMPLIANCE_SCAN_RUN` and `REPORTS_COMPLIANCE_FINDING`, so the two paths never both describe one finding. The plugin cannot see whether a tool has runs, so this is a producer's rule and is not enforced here.
 
@@ -448,6 +450,7 @@ Five edges, each its own mechanical relationship, all references (none is contai
 | req-compliance-core-scan-edges-4 | A Location May Be Any Node | Implemented | `RUNS_AT_LOCATION` accepts any node as its target from a scanner. | `::TestEdges::test_a_location_may_be_any_node` |
 | req-compliance-core-scan-edges-5 | Plain Identity, References Only | Implemented | Every edge declares `{"discriminators": []}`, a re-sent edge is the same edge, and none is containment. | `::TestEdges::test_every_new_edge_declares_the_plain_identity_and_a_dimension`, `::TestIdentity::test_a_resent_edge_is_the_same_edge`, `::TestEdges::test_none_of_them_is_containment` |
 | req-compliance-core-scan-edges-6 | Detects Only Without Runs | Deferred | A tool with runs reports through the run; `DETECTS_COMPLIANCE_FINDING` is for a tool without. | Producer's rule: the plugin cannot see whether a tool has runs. |
+| req-compliance-core-scan-edges-7 | Cardinality Is The Producer's | Deferred | One scanner per run and one reporting run per finding. | Not enforced: edge definitions carry no cardinality. A guard would need a core constraint. |
 
 ### Naming Discipline
 ----
