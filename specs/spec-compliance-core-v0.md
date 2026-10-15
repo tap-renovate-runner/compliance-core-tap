@@ -357,10 +357,13 @@ A `compliance_scanner` is an **installed instance, not a product**: Trivy as the
 
 | field | meaning |
 | --- | --- |
-| `scanner_key` | The producer's slug for this install: the product and where it is installed. Identity (`NATURAL_KEY = ("scanner_key",)`), opaque here. Required. |
+| `source` | The producing plugin's slug (`github_core`). Half of the identity: it namespaces `scanner_key`. Optional, as on `compliance_finding`. |
+| `scanner_key` | The producer's slug for this install: the product and where it is installed. Other half of the identity (`NATURAL_KEY = ("source", "scanner_key")`), opaque here, never parsed. Required. |
 | `name` | The product (`Trivy`, `CodeQL`, `Grype`). Required. Two installs of one product share it. |
 | `configuration` | How the install is configured, as a source supplied it (object). `null` until a source supplies it; no source does yet. |
 | `locator` | The text the data gave for where it is installed, verbatim (`unified-systems-com/tap/.github/workflows/publish-images.yml:scan`). `null` when unobserved. |
+
+**Keyed with a producer namespace.** `scanner_key` and `run_key` are opaque, so they are namespaced by `source` exactly as `compliance_finding` is. A false merge of two different scanners (two producers minting the same slug) is silent and unrecoverable; a false split is visible and reconcilable. `compliance_vulnerability` is the exception, because a CVE is a public record several producers cite (ruled by George 2026-10-15).
 
 **Never a version.** A version changes under an unchanged install; it is the fact about what executed, so it lives on the scan run (`tool_version`). A test fails if the scanner gains a field with `version` in its name.
 
@@ -370,7 +373,7 @@ Display name is `name`, with `locator` in brackets when there is one, so two ins
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-scanner-1 | Keyed By The Install | Implemented | `compliance_scanner` declares `NATURAL_KEY = ("scanner_key",)`; re-observing it is one node. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity::test_two_writes_of_one_source_object_are_one_node` |
+| req-compliance-core-scanner-1 | Keyed By The Install | Implemented | `compliance_scanner` declares `NATURAL_KEY = ("source", "scanner_key")`; re-observing it is one node, and the same `scanner_key` from two sources is two nodes. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity::test_two_writes_of_one_source_object_are_one_node` |
 | req-compliance-core-scanner-2 | Never A Version | Implemented | No `compliance_scanner` field carries `version` in its name; `tool_version` is on the scan run. | `::TestNodes::test_a_scanner_carries_no_version` |
 | req-compliance-core-scanner-3 | Configuration And Locator Are Null Until Supplied | Implemented | A scanner written without `configuration` or `locator` stores `null`. | `::TestNodes::test_a_scanner_configuration_is_null_until_a_source_supplies_it` |
 | req-compliance-core-scanner-4 | Installs Are Distinguishable | Implemented | Two installs of one product are two nodes with different display names. | `::TestNodes::test_two_installs_of_one_product_are_two_scanners_with_distinguishable_names` |
@@ -387,7 +390,8 @@ A `compliance_scan_run` is one execution of a scanner. It sits between the scann
 
 | field | meaning |
 | --- | --- |
-| `run_key` | The producer's key for this execution, opaque here. Identity (`NATURAL_KEY = ("run_key",)`). Required. |
+| `source` | The producing plugin's slug. Half of the identity: it namespaces `run_key`. Optional, as on `compliance_finding`. |
+| `run_key` | The producer's key for this execution. Other half of the identity (`NATURAL_KEY = ("source", "run_key")`), opaque here, never parsed. Required. |
 | `tool_version` | The version of the tool that ran. |
 | `commit_sha`, `ref` | The commit and full ref analysed. |
 | `category` | What was scanned, as the producer labels it (an image, a path, a language). |
@@ -395,7 +399,7 @@ A `compliance_scan_run` is one execution of a scanner. It sits between the scann
 | `outcome` | How the run ended, as the producer says it; `null` where not observed. A run derived from an alert's latest instance cannot say. |
 | `results_count` | Results reported. `0` is a run that reported nothing; `null` is unobserved. |
 
-All but `run_key` are `null` when unobserved. Display name is `run_key`. Default dimensions are `{"compliance": "scan-run"}`.
+All fields but `source` and `run_key` are `null` when unobserved. Display name is `run_key`. Default dimensions are `{"compliance": "scan-run"}`.
 
 **The GitHub detail twin and `TAP-KNOWN-DUPE(scan-run-analysis-fields)`.** `github_core__code_scanning_analysis` (natural key `full_name`, `analysis_id`) is the GitHub detail of the neutral run, the way a detail node hangs off a finding. Six scan-run fields repeat a field of that node: `tool_version`, `commit_sha`, `ref`, `category`, `results_count`, and `observed_at` (`created_at` there). A neutral substrate cannot import or read a vendor plugin's model, so the facts are held on both sides; the duplication is tagged `TAP-KNOWN-DUPE(scan-run-analysis-fields)` at the field block of `ComplianceScanRun` and at the parity test, which fails if either side loses a repeated field. The partner site is `models/code_scanning_analysis.py` in `github_core`, which adds its own tag in its own repository.
 
@@ -405,7 +409,7 @@ Where the runs come from is not decided here: real `code_scanning_analysis` node
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-scan-run-1 | Keyed By The Run | Implemented | `compliance_scan_run` declares `NATURAL_KEY = ("run_key",)`; re-observing a run with a corrected `results_count` is one node. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity::test_two_writes_of_one_source_object_are_one_node` |
+| req-compliance-core-scan-run-1 | Keyed By The Run | Implemented | `compliance_scan_run` declares `NATURAL_KEY = ("source", "run_key")`; re-observing a run with a corrected `results_count` is one node, and the same `run_key` from two sources is two nodes. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity::test_two_writes_of_one_source_object_are_one_node` |
 | req-compliance-core-scan-run-2 | Null Is Unobserved, Zero Is A Result | Implemented | A run written without `outcome` stores `null`; `results_count` `0` is stored as `0`. | Authorizes the model's `# noqa: DJ001  (req-compliance-core-scan-run-2)`. `::TestNodes::test_an_unwritten_field_is_unobserved_and_an_empty_one_is_observed_empty` |
 | req-compliance-core-scan-run-3 | Values Are Checked | Implemented | A negative or non-integer `results_count`, or a non-string `commit_sha`, is refused. | `::TestNodes::test_scan_run_schema_rejects` |
 | req-compliance-core-scan-run-4 | Known-Dupe Parity | Implemented | Each field the run repeats from `github_core__code_scanning_analysis` exists on both sides. | Skips on a stack without `github_core`. `::TestKnownDupe::test_every_repeated_field_exists_on_both_sides` |
@@ -430,6 +434,8 @@ Five edges, each its own mechanical relationship, all references (none is contai
 
 **`REPORTS_COMPLIANCE_FINDING`** goes from the run to the finding. By convention a finding is reported by the latest run that saw it and earlier runs are history, not edges.
 
+**Counting findings per scanner takes two paths** (scanner to run to finding, and scanner to finding for a tool with no runs). Gryphon has no UNION, so a page combines two Searches in JS or shows two cards (`req-compliance-core-scan-edges-8`).
+
 **Cardinality is the producer's.** A run has one scanner and a finding has one reporting run, but edge definitions carry no cardinality and identity is `(type, source, target)`, so the plugin cannot refuse a second scanner for one run or a second run for one finding; keeping to one is the producer's job (`req-compliance-core-scan-edges-7`).
 
 **`DETECTS_COMPLIANCE_FINDING`** exists only for a tool that has no runs (Dependabot, a continuous service); a tool with runs reports through `PERFORMS_COMPLIANCE_SCAN_RUN` and `REPORTS_COMPLIANCE_FINDING`, so the two paths never both describe one finding. The plugin cannot see whether a tool has runs, so this is a producer's rule and is not enforced here.
@@ -451,6 +457,7 @@ Five edges, each its own mechanical relationship, all references (none is contai
 | req-compliance-core-scan-edges-5 | Plain Identity, References Only | Implemented | Every edge declares `{"discriminators": []}`, a re-sent edge is the same edge, and none is containment. | `::TestEdges::test_every_new_edge_declares_the_plain_identity_and_a_dimension`, `::TestIdentity::test_a_resent_edge_is_the_same_edge`, `::TestEdges::test_none_of_them_is_containment` |
 | req-compliance-core-scan-edges-6 | Detects Only Without Runs | Deferred | A tool with runs reports through the run; `DETECTS_COMPLIANCE_FINDING` is for a tool without. | Producer's rule: the plugin cannot see whether a tool has runs. |
 | req-compliance-core-scan-edges-7 | Cardinality Is The Producer's | Deferred | One scanner per run and one reporting run per finding. | Not enforced: edge definitions carry no cardinality. A guard would need a core constraint. |
+| req-compliance-core-scan-edges-8 | Two Paths To Count A Scanner's Findings | Deferred | A page counting findings per scanner needs both paths, scanner to run to finding and scanner to finding. | Gryphon has no UNION, so that is two Searches combined in JS, or two cards. |
 
 ### Naming Discipline
 ----

@@ -31,11 +31,14 @@ class ComplianceScanRun(BaseModel):
     """
 
     ENTITY_TYPE: ClassVar[str] = "compliance_core__compliance_scan_run"
-    # The producer's key for this execution, opaque here. A run IS re-observed (every alert it
-    # reported names it again), so KEYLESS would split one run into many nodes. Neither the
-    # timestamp nor the commit is in the key: a run is not "the scanner at a commit" (two runs can
-    # share a commit) and a timestamp is never identity.
-    NATURAL_KEY: ClassVar[tuple[str, ...]] = ("run_key",)
+    # WHO said it, and WHAT THEY CALL IT, exactly as `compliance_finding` keys. `run_key` is the
+    # producer's key for this execution, opaque here; `source` is the producing plugin's slug and
+    # namespaces it (a false merge of two runs is silent and unrecoverable, a false split is
+    # visible; ruled by George 2026-10-15, Issue# 32 - this repo). A run IS re-observed (every
+    # alert it reported names it again), so KEYLESS would split one run into many nodes. Neither
+    # the timestamp nor the commit is in the key: two runs can share a commit, and a timestamp is
+    # never identity.
+    NATURAL_KEY: ClassVar[tuple[str, ...]] = ("source", "run_key")
     ENTITY_NAME: ClassVar[str] = "Scan Run"
     ENTITY_DESCRIPTION: ClassVar[str] = (
         "One execution of a scanner: the tool version, the commit and ref it analysed, what it "
@@ -59,6 +62,7 @@ class ComplianceScanRun(BaseModel):
     ]
 
     FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = {
+        "source": {"type": "string", "maxLength": 64},
         "run_key": {"type": "string", "minLength": 1, "maxLength": 512},
         "tool_version": {"type": ["string", "null"]},
         "commit_sha": {"type": ["string", "null"]},
@@ -74,12 +78,15 @@ class ComplianceScanRun(BaseModel):
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["run_key"]
 
+    #: The producer that asserted this run: the plugin slug of whoever minted it
+    #: ("github_core"). Half of the natural key: it namespaces `run_key`.
+    source = models.CharField(max_length=64, blank=True, default="")
     run_key = models.CharField(
         max_length=512,
         blank=True,
         default="",
         db_index=True,
-        help_text="The producer's key for this execution, opaque here. Identity.",
+        help_text="The producer's key for this execution, opaque here. Half of the identity.",
     )
     # TAP-KNOWN-DUPE(scan-run-analysis-fields): tool_version, commit_sha, ref, category,
     # observed_at (github_core's created_at) and results_count repeat fields of

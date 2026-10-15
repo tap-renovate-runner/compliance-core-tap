@@ -28,11 +28,13 @@ class ComplianceScanner(BaseModel):
     """
 
     ENTITY_TYPE: ClassVar[str] = "compliance_core__compliance_scanner"
-    # The producer's slug for this install (product slug plus where it is installed). The
-    # producer composes it from facts it holds and compliance_core never parses it, exactly as
-    # with `source_key`; it is a slug, not a name, because `name` is the product and two installs
-    # of one product share it.
-    NATURAL_KEY: ClassVar[tuple[str, ...]] = ("scanner_key",)
+    # WHO said it, and WHAT THEY CALL IT, exactly as `compliance_finding` keys. `scanner_key` is
+    # the producer's slug for this install (product plus where it is installed), opaque here;
+    # `source` is the producing plugin's slug and namespaces it. Rejected: `scanner_key` alone.
+    # Two producers that mint the same slug would merge into one scanner silently and
+    # unrecoverably, where a false split is visible and reconcilable (ruled by George 2026-10-15,
+    # Issue# 32 - this repo). compliance_core never parses either half.
+    NATURAL_KEY: ClassVar[tuple[str, ...]] = ("source", "scanner_key")
     ENTITY_NAME: ClassVar[str] = "Scanner"
     ENTITY_DESCRIPTION: ClassVar[str] = (
         "A detection tool installed at one place (Trivy as the scan job of one workflow), not the "
@@ -55,6 +57,7 @@ class ComplianceScanner(BaseModel):
     ]
 
     FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = {
+        "source": {"type": "string", "maxLength": 64},
         "scanner_key": {"type": "string", "minLength": 1, "maxLength": 512},
         "name": {"type": "string", "minLength": 1},
         "configuration": {"type": ["object", "null"]},
@@ -66,12 +69,15 @@ class ComplianceScanner(BaseModel):
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["scanner_key", "name"]
 
+    #: The producer that asserted this scanner: the plugin slug of whoever minted it
+    #: ("github_core"). Half of the natural key: it namespaces `scanner_key`.
+    source = models.CharField(max_length=64, blank=True, default="")
     scanner_key = models.CharField(
         max_length=512,
         blank=True,
         default="",
         db_index=True,
-        help_text="Slug of this install: the product and where it is installed. Opaque here. Identity.",
+        help_text="Slug of this install: the product and where it is installed. Opaque here. Half of the identity.",
     )
     name = models.CharField(max_length=255, blank=True, default="", help_text="The product (Trivy, CodeQL, Grype).")
     configuration = models.JSONField(
