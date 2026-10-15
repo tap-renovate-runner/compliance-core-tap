@@ -6,6 +6,9 @@ from tap_plugin.compliance_core.models.compliance_context import ComplianceConte
 from tap_plugin.compliance_core.models.compliance_evidence import ComplianceEvidence
 from tap_plugin.compliance_core.models.compliance_exception import ComplianceException
 from tap_plugin.compliance_core.models.compliance_finding import ComplianceFinding
+from tap_plugin.compliance_core.models.compliance_scan_run import ComplianceScanRun
+from tap_plugin.compliance_core.models.compliance_scanner import ComplianceScanner
+from tap_plugin.compliance_core.models.compliance_vulnerability import ComplianceVulnerability
 
 __all__ = [
     "ComplianceArtifact",
@@ -14,4 +17,7 @@ __all__ = [
     "ComplianceEvidence",
     "ComplianceException",
     "ComplianceFinding",
+    "ComplianceScanRun",
+    "ComplianceScanner",
+    "ComplianceVulnerability",
 ]

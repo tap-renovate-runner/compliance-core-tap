@@ -15,6 +15,9 @@ compliance_core__compliance_evidence = "tap_plugin.compliance_core.models.compli
 compliance_core__compliance_finding = "tap_plugin.compliance_core.models.compliance_finding.ComplianceFinding"
 compliance_core__compliance_exception = "tap_plugin.compliance_core.models.compliance_exception.ComplianceException"
 compliance_core__compliance_boundary = "tap_plugin.compliance_core.models.compliance_boundary.ComplianceBoundary"
+compliance_core__compliance_vulnerability = "tap_plugin.compliance_core.models.compliance_vulnerability.ComplianceVulnerability"
+compliance_core__compliance_scanner = "tap_plugin.compliance_core.models.compliance_scanner.ComplianceScanner"
+compliance_core__compliance_scan_run = "tap_plugin.compliance_core.models.compliance_scan_run.ComplianceScanRun"
 
 [edges]
 CITES_COMPLIANCE_EVIDENCE__compliance_core = "edges/CITES_COMPLIANCE_EVIDENCE.edge.json"
@@ -22,6 +25,11 @@ COVERS_COMPLIANCE_FINDING__compliance_core = "edges/COVERS_COMPLIANCE_FINDING.ed
 CARRIES_COMPLIANCE_FINDING__compliance_core = "edges/CARRIES_COMPLIANCE_FINDING.edge.json"
 SCOPED_TO_COMPLIANCE_BOUNDARY__compliance_core = "edges/SCOPED_TO_COMPLIANCE_BOUNDARY.edge.json"
 CONCERNS_COMPLIANCE_CONTROL__compliance_core = "edges/CONCERNS_COMPLIANCE_CONTROL.edge.json"
+CONCERNS_COMPLIANCE_VULNERABILITY__compliance_core = "edges/CONCERNS_COMPLIANCE_VULNERABILITY.edge.json"
+PERFORMS_COMPLIANCE_SCAN_RUN__compliance_core = "edges/PERFORMS_COMPLIANCE_SCAN_RUN.edge.json"
+REPORTS_COMPLIANCE_FINDING__compliance_core = "edges/REPORTS_COMPLIANCE_FINDING.edge.json"
+DETECTS_COMPLIANCE_FINDING__compliance_core = "edges/DETECTS_COMPLIANCE_FINDING.edge.json"
+RUNS_AT_LOCATION__compliance_core = "edges/RUNS_AT_LOCATION.edge.json"
 
 [[boot.records]]
 name = "ci"

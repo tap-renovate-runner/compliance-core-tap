@@ -1,0 +1,31 @@
+{
+  "slug": "DETECTS_COMPLIANCE_FINDING__compliance_core",
+  "name": "Detects Compliance Finding",
+  "description": "A scanner detects a compliance finding directly, with no run between them. Only for a tool that has no discrete executions (Dependabot, a continuous service); a tool that has runs reports through PERFORMS_COMPLIANCE_SCAN_RUN and REPORTS_COMPLIANCE_FINDING, so the two paths never both describe one finding. The tool_version and category properties are optional and are the continuous service's own statement, not a run's.",
+  "sources": [
+    "compliance_core__compliance_scanner"
+  ],
+  "targets": [
+    "compliance_core__compliance_finding"
+  ],
+  "property_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tool_version": {
+        "type": "string",
+        "description": "The tool version the service reported for this detection, when it reports one."
+      },
+      "category": {
+        "type": "string",
+        "description": "What was scanned, as the service labels it, when it labels it."
+      }
+    }
+  },
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "finding"
+  }
+}

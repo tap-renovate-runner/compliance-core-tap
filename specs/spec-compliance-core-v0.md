@@ -18,6 +18,12 @@
 > producer-minted types gain neutral `source` / `source_key` columns and key on them,
 > `compliance_context` keys on `regime`, and the core floor rises to `>= 0.2.0`.
 > Migration `0004` adds the fields and the generated composite search indexes.
+>
+> **Vulnerability, scanner and scan run added 2026-10-15** (Issue# 32 - this repo, design ruled by
+> George): `compliance_vulnerability`, `compliance_scanner`, `compliance_scan_run` and the edges
+> `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`,
+> `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`. Vocabulary only;
+> no collector emits them. Migration `0005`.
 
 ## Plugin Identity
 
@@ -27,10 +33,15 @@
 - **Public surface:**
   - **Models** (see `req-compliance-core-models`): `compliance_artifact`,
     `compliance_context`, `compliance_evidence`, `compliance_finding`,
-    `compliance_exception`, `compliance_boundary`.
+    `compliance_exception`, `compliance_boundary`; and, added 2026-10-15,
+    `compliance_vulnerability`, `compliance_scanner`, `compliance_scan_run`
+    (see `req-compliance-core-vulnerability`, `-scanner`, `-scan-run`).
   - **Edge types** (see `req-compliance-core-edges`): `CITES_COMPLIANCE_EVIDENCE`,
     `COVERS_COMPLIANCE_FINDING`, `CARRIES_COMPLIANCE_FINDING`,
-    `SCOPED_TO_COMPLIANCE_BOUNDARY`, `CONCERNS_COMPLIANCE_CONTROL`.
+    `SCOPED_TO_COMPLIANCE_BOUNDARY`, `CONCERNS_COMPLIANCE_CONTROL`; and, added 2026-10-15,
+    `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`,
+    `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`
+    (see `req-compliance-core-scan-edges`).
   - **Default dimensions** (see `req-compliance-core-regime-neutral`): a neutral
     per-type marker under the `compliance` key (e.g. `compliance: finding`); the
     **regime** dimension (`fedramp-20x`, `soc2`, …) is layered per-instance by the
@@ -120,6 +131,10 @@ layer.
 | req-compliance-core-edges | [Edge Vocabulary](#edge-vocabulary) | Implemented | `CITES_COMPLIANCE_EVIDENCE`, `COVERS_COMPLIANCE_FINDING`, `CARRIES_COMPLIANCE_FINDING`, `SCOPED_TO_COMPLIANCE_BOUNDARY`, `CONCERNS_COMPLIANCE_CONTROL` (wildcard target). |
 | req-compliance-core-identity | [Assigned Identity](#assigned-identity) | Implemented | Every model declares `NATURAL_KEY`; the five producer-minted types key on `("source", "source_key")`, `compliance_context` on `("regime",)`. Floor `requires_tap >= 0.2.0`. |
 | req-compliance-core-regime-neutral | [Regime On The Instance](#regime-on-the-instance) | Implemented | Model default is a neutral type marker; regime layered per-instance. Fixes the hardcoded `fedramp-20x` default. |
+| req-compliance-core-vulnerability | [Vulnerability Modeling](#vulnerability-modeling) | Implemented | `compliance_vulnerability`: a public record (CVE, else GHSA) named once however many tools report it; CVSS, CWE, SSVC and KEV facts live here, not on every finding. |
+| req-compliance-core-scanner | [Scanner Modeling](#scanner-modeling) | Implemented | `compliance_scanner`: an installed instance of a detection tool at one place, never a version. |
+| req-compliance-core-scan-run | [Scan Run Modeling](#scan-run-modeling) | Implemented | `compliance_scan_run`: one execution of a scanner; carries the tool version, commit, ref, category, time, outcome and result count. |
+| req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
@@ -145,7 +160,7 @@ RID: `req-compliance-core-models`
 
 Status: `Implemented`
 
-Six node types, `entity_type = compliance_core__<name>`, fields carried forward
+Six node types (three more, added 2026-10-15, have their own sections: [Vulnerability](#vulnerability-modeling), [Scanner](#scanner-modeling), [Scan Run](#scan-run-modeling)), `entity_type = compliance_core__<name>`, fields carried forward
 faithfully from the `fedramp_20x_ksi` originals:
 
 | entity_type | from | key fields |
@@ -273,7 +288,10 @@ Status: `Implemented`
 Generic models MUST NOT bake a regime into their default dimensions. The model default
 is a neutral per-type marker under the `compliance` key: `compliance: artifact`,
 `compliance: context`, `compliance: evidence`, `compliance: finding`, `compliance:
-exception`, `compliance: boundary`. The **regime** (`fedramp-20x`, `soc2`, …) is a
+exception`, `compliance: boundary`, and, added 2026-10-15, `compliance: vulnerability`,
+`compliance: scanner` and `compliance: scan-run` (a knowing extension of the bare
+`compliance` key that Issue# 13 asks to namespace: it follows the existing convention rather
+than settling it). The **regime** (`fedramp-20x`, `soc2`, …) is a
 distinct dimension applied **per-instance** by whatever collector mints the node (a
 future compliance collector would stamp `fedramp-20x` / `soc2` on the instances it
 produces). This fixes the current `evidence`/`finding`/`exception` models defaulting to
@@ -290,6 +308,156 @@ per-instance regime stamping lands with the first minting collector.
 | req-compliance-core-regime-neutral-1 | Neutral model default | Implemented | Each model defaults to a type marker, not a regime slug. |
 | req-compliance-core-regime-neutral-2 | Regime per-instance | Deferred | Regime is an instance-level dimension, not a model default; the mechanism (per-node dimensions) is in place. No v0 collector mints these nodes, so no regime is stamped yet — lands with the first minting collector. |
 | req-compliance-core-regime-neutral-3 | No fedramp default remains | Implemented | No compliance_core model carries `fedramp-20x` (or any regime) as its default. |
+
+### Vulnerability Modeling
+----
+RID: `req-compliance-core-vulnerability`
+
+Status: `Implemented`
+
+A `compliance_vulnerability` is a publicly identified weakness, named once. Without it one CVE reported by Trivy, Grype and Dependabot is three unrelated findings and nothing says they are the same vulnerability; grouping "by vulnerability" becomes a string match on a scanner's `rule_id`, and the CVSS, CWE, SSVC and KEV facts about the CVE have no node to live on and would be copied onto every finding. A finding points at its vulnerability with `CONCERNS_COMPLIANCE_VULNERABILITY`.
+
+#### Implementation
+
+Identity is `NATURAL_KEY = ("vuln_id",)`: the CVE id where the vulnerability has one, else its GHSA id, every other id in `aliases`. It is deliberately not `("source", "source_key")`: a vulnerability is a public record that several producers each cite, and a per-producer key would put the same CVE back into three nodes. All fields other than `vuln_id` are `null` when unobserved and an empty string or list when a source looked and found nothing (the grid's null convention, `req-grid-node-observation`).
+
+| field | meaning |
+| --- | --- |
+| `vuln_id` | CVE id, else GHSA id. Identity. Required. |
+| `aliases` | Every other id for the same vulnerability, as the record lists them (list of strings). |
+| `title`, `description`, `published_at` | The record's own words and publication time. |
+| `cvss_score`, `cvss_vector`, `cvss_version`, `cvss_source` | The base score (0.0 to 10.0), the vector it came from, the CVSS version, and who assigned it, named so a reader can weigh it. |
+| `cwes` | CWE ids from the record's problem types (list of strings). |
+| `ssvc_exploitation`, `ssvc_automatable`, `ssvc_technical_impact`, `ssvc_assessed_at` | CISA's SSVC assessment as published. Free strings: the plugin does not close CISA's vocabulary. |
+| `kev`, `kev_added`, `kev_catalog_version` | CISA's Known Exploited Vulnerabilities catalog. `kev` is `false` only when the catalog was read and does not list the id, `null` when it was not read; `kev_catalog_version` names the release the answer came from. |
+| `record_url`, `record_updated_at` | Where the record was fetched from and when it says it was last modified. |
+
+The SSVC values and the KEV flag are CISA's published facts about a vulnerability, not this system's evaluation; nothing on this node is derived from a judgement made here. The fix that exists is a fact about a vulnerability **in one component**, so `fixed_versions` rides the `CONCERNS_COMPLIANCE_VULNERABILITY` edge and not this node.
+
+Display name is `vuln_id`. Default dimensions are `{"compliance": "vulnerability"}`. The node accepts edges only from findings and draws none (`OUTBOUND_EDGES = []`).
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-vulnerability-1 | Keyed By The Public Id | Implemented | `compliance_vulnerability` declares `NATURAL_KEY = ("vuln_id",)`; re-observing one vulnerability, with a corrected score, is one node, and a CVE reported by three tools is one node with three inbound edges. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity` |
+| req-compliance-core-vulnerability-2 | Null Is Unobserved | Implemented | A field no source wrote is `null`, not a sentinel; `""`, `[]` and `false` are stored as observed-empty. | Authorizes the model's `# noqa: DJ001  (req-compliance-core-vulnerability-2)`. `::TestNodes::test_an_unwritten_field_is_unobserved_and_an_empty_one_is_observed_empty` |
+| req-compliance-core-vulnerability-3 | Values Are Checked | Implemented | `cvss_score` is within 0 to 10, `aliases` and `cwes` are lists of strings, `kev` is a boolean and `kev_added` an ISO date; anything else is refused. | `::TestNodes::test_vulnerability_schema_rejects`, `::test_a_fully_observed_vulnerability_round_trips` |
+| req-compliance-core-vulnerability-4 | Findings Point In, Nothing Leaves | Implemented | The node accepts `CONCERNS_COMPLIANCE_VULNERABILITY` from a finding and no other edge from it. | `::TestEdges::test_the_wrong_way_round_or_wrong_type_is_refused` |
+
+### Scanner Modeling
+----
+RID: `req-compliance-core-scanner`
+
+Status: `Implemented`
+
+A `compliance_scanner` is an **installed instance, not a product**: Trivy as the `scan` job of one workflow, not Trivy in general. The same tool installed in two workflows is two scanners; a platform installed once is one. (Ruled by George 2026-10-15, Issue# 32 - this repo; it supersedes the first design, in which a scanner was a product keyed by name.)
+
+#### Implementation
+
+| field | meaning |
+| --- | --- |
+| `source` | The producing plugin's slug (`github_core`). Half of the identity: it namespaces `scanner_key`. Optional, as on `compliance_finding`. |
+| `scanner_key` | The producer's slug for this install: the product and where it is installed. Other half of the identity (`NATURAL_KEY = ("source", "scanner_key")`), opaque here, never parsed. Required. |
+| `name` | The product (`Trivy`, `CodeQL`, `Grype`). Required. Two installs of one product share it. |
+| `configuration` | How the install is configured, as a source supplied it (object). `null` until a source supplies it; no source does yet. |
+| `locator` | The text the data gave for where it is installed, verbatim (`unified-systems-com/tap/.github/workflows/publish-images.yml:scan`). `null` when unobserved. |
+
+**Keyed with a producer namespace.** `scanner_key` and `run_key` are opaque, so they are namespaced by `source` exactly as `compliance_finding` is. A false merge of two different scanners (two producers minting the same slug) is silent and unrecoverable; a false split is visible and reconcilable. `compliance_vulnerability` is the exception, because a CVE is a public record several producers cite (ruled by George 2026-10-15).
+
+**Never a version.** A version changes under an unchanged install; it is the fact about what executed, so it lives on the scan run (`tool_version`). A test fails if the scanner gains a field with `version` in its name.
+
+Display name is `name`, with `locator` in brackets when there is one, so two installs of one product are told apart on screen. Default dimensions are `{"compliance": "scanner"}`. When the place of the install is itself a node on the grid, `RUNS_AT_LOCATION` draws the edge and `locator` keeps the words. A scanner may carry a finding about itself (a detection-health finding) with the existing `CARRIES_COMPLIANCE_FINDING`; that use is not built here.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-scanner-1 | Keyed By The Install | Implemented | `compliance_scanner` declares `NATURAL_KEY = ("source", "scanner_key")`; re-observing it is one node, and the same `scanner_key` from two sources is two nodes. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity::test_two_writes_of_one_source_object_are_one_node` |
+| req-compliance-core-scanner-2 | Never A Version | Implemented | No `compliance_scanner` field carries `version` in its name; `tool_version` is on the scan run. | `::TestNodes::test_a_scanner_carries_no_version` |
+| req-compliance-core-scanner-3 | Configuration And Locator Are Null Until Supplied | Implemented | A scanner written without `configuration` or `locator` stores `null`. | `::TestNodes::test_a_scanner_configuration_is_null_until_a_source_supplies_it` |
+| req-compliance-core-scanner-4 | Installs Are Distinguishable | Implemented | Two installs of one product are two nodes with different display names. | `::TestNodes::test_two_installs_of_one_product_are_two_scanners_with_distinguishable_names` |
+
+### Scan Run Modeling
+----
+RID: `req-compliance-core-scan-run`
+
+Status: `Implemented`
+
+A `compliance_scan_run` is one execution of a scanner. It sits between the scanner and its findings because an alert is opened by one run, re-confirmed by many and closed when a later run stops reporting it, and because "a scanner failed" is a fact about a run, which is what a detection-health finding attaches to. (Ruled by George 2026-10-15, Issue# 32 - this repo.)
+
+#### Implementation
+
+| field | meaning |
+| --- | --- |
+| `source` | The producing plugin's slug. Half of the identity: it namespaces `run_key`. Optional, as on `compliance_finding`. |
+| `run_key` | The producer's key for this execution. Other half of the identity (`NATURAL_KEY = ("source", "run_key")`), opaque here, never parsed. Required. |
+| `tool_version` | The version of the tool that ran. |
+| `commit_sha`, `ref` | The commit and full ref analysed. |
+| `category` | What was scanned, as the producer labels it (an image, a path, a language). |
+| `observed_at` | When the producer observed the run. |
+| `outcome` | How the run ended, as the producer says it; `null` where not observed. A run derived from an alert's latest instance cannot say. |
+| `results_count` | Results reported. `0` is a run that reported nothing; `null` is unobserved. |
+
+All fields but `source` and `run_key` are `null` when unobserved. Display name is `run_key`. Default dimensions are `{"compliance": "scan-run"}`.
+
+**The GitHub detail twin and `TAP-KNOWN-DUPE(scan-run-analysis-fields)`.** `github_core__code_scanning_analysis` (natural key `full_name`, `analysis_id`) is the GitHub detail of the neutral run, the way a detail node hangs off a finding. Six scan-run fields repeat a field of that node: `tool_version`, `commit_sha`, `ref`, `category`, `results_count`, and `observed_at` (`created_at` there). A neutral substrate cannot import or read a vendor plugin's model, so the facts are held on both sides; the duplication is tagged `TAP-KNOWN-DUPE(scan-run-analysis-fields)` at the field block of `ComplianceScanRun` and at the parity test, which fails if either side loses a repeated field. The partner site is `models/code_scanning_analysis.py` in `github_core`, which adds its own tag in its own repository.
+
+Where the runs come from is not decided here: real `code_scanning_analysis` nodes where a collector has put them on the grid, otherwise runs derived from each alert's latest instance (which cannot see a run that reported nothing). Whether a continuous service gets a synthetic run is open; until it is ruled, such a tool uses `DETECTS_COMPLIANCE_FINDING`.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-scan-run-1 | Keyed By The Run | Implemented | `compliance_scan_run` declares `NATURAL_KEY = ("source", "run_key")`; re-observing a run with a corrected `results_count` is one node, and the same `run_key` from two sources is two nodes. | `tests/test_vulnerability_scanner_scan_run.py::TestIdentity::test_two_writes_of_one_source_object_are_one_node` |
+| req-compliance-core-scan-run-2 | Null Is Unobserved, Zero Is A Result | Implemented | A run written without `outcome` stores `null`; `results_count` `0` is stored as `0`. | Authorizes the model's `# noqa: DJ001  (req-compliance-core-scan-run-2)`. `::TestNodes::test_an_unwritten_field_is_unobserved_and_an_empty_one_is_observed_empty` |
+| req-compliance-core-scan-run-3 | Values Are Checked | Implemented | A negative or non-integer `results_count`, or a non-string `commit_sha`, is refused. | `::TestNodes::test_scan_run_schema_rejects` |
+| req-compliance-core-scan-run-4 | Known-Dupe Parity | Implemented | Each field the run repeats from `github_core__code_scanning_analysis` exists on both sides. | Skips on a stack without `github_core`. `::TestKnownDupe::test_every_repeated_field_exists_on_both_sides` |
+
+### Scan Edges
+----
+RID: `req-compliance-core-scan-edges`
+
+Status: `Implemented`
+
+Five edges, each its own mechanical relationship, all references (none is containment: retiring a scanner leaves its runs' findings and the shared vulnerability they cite), each declaring the plain identity (type, source, target) so a re-sent edge is the same edge.
+
+| edge (compliance_core) | endpoints | properties |
+| --- | --- | --- |
+| `CONCERNS_COMPLIANCE_VULNERABILITY` | `compliance_finding` → `compliance_vulnerability` | `fixed_versions`: list of strings, may be empty. |
+| `PERFORMS_COMPLIANCE_SCAN_RUN` | `compliance_scanner` → `compliance_scan_run` | none |
+| `REPORTS_COMPLIANCE_FINDING` | `compliance_scan_run` → `compliance_finding` | none |
+| `DETECTS_COMPLIANCE_FINDING` | `compliance_scanner` → `compliance_finding` | optional `tool_version`, `category`. |
+| `RUNS_AT_LOCATION` | `compliance_scanner` or `compliance_scan_run` → any node (wildcard target) | `locator`: the place as the data gave it. |
+
+**`CONCERNS_COMPLIANCE_VULNERABILITY`** is named after `CONCERNS_COMPLIANCE_CONTROL`. Its `fixed_versions` is the fix in the component the finding is about, because the same vulnerability is fixed at a different version in each component. `[]` means the source looked and named no fix; an absent property means it was not observed.
+
+**`REPORTS_COMPLIANCE_FINDING`** goes from the run to the finding. By convention a finding is reported by the latest run that saw it and earlier runs are history, not edges.
+
+**Counting findings per scanner takes two paths** (scanner to run to finding, and scanner to finding for a tool with no runs). Gryphon has no UNION, so a page combines two Searches in JS or shows two cards (`req-compliance-core-scan-edges-8`).
+
+**Cardinality is the producer's.** A run has one scanner and a finding has one reporting run, but edge definitions carry no cardinality and identity is `(type, source, target)`, so the plugin cannot refuse a second scanner for one run or a second run for one finding; keeping to one is the producer's job (`req-compliance-core-scan-edges-7`).
+
+**`DETECTS_COMPLIANCE_FINDING`** exists only for a tool that has no runs (Dependabot, a continuous service); a tool with runs reports through `PERFORMS_COMPLIANCE_SCAN_RUN` and `REPORTS_COMPLIANCE_FINDING`, so the two paths never both describe one finding. The plugin cannot see whether a tool has runs, so this is a producer's rule and is not enforced here.
+
+**`RUNS_AT_LOCATION`** is the one edge of the five that is not named for a compliance object. Its target is a wildcard on purpose, for the reason `CONCERNS_COMPLIANCE_CONTROL` has one: the place is whatever the producer's world has (today the `github_core__github_platform` node for github.com; later the workflow, job or actions-run node when a collector puts it on the grid), and compliance_core must not name a producer's types. A scanner's location is where it is installed; a run's is where it executed. It passes the edge-naming check (`<ACTION>_<OBJECT>` with a locative preposition inside the slug, not at its end).
+
+**Dimensions.** Edge default dimensions follow the target's type marker, as `CARRIES_COMPLIANCE_FINDING` and `CONCERNS_COMPLIANCE_CONTROL` do: `vulnerability`, `scan-run`, `finding`, `finding`. `RUNS_AT_LOCATION` has no typed target, so it takes the source's family, `scanner`.
+
+**Wrong ends.** The three new nodes declare their edges (`OUTBOUND_EDGES` / `INBOUND_EDGES`), so a wrong-way or wrong-type edge at one of them is refused. `compliance_finding` declares none and gaining some would change what every consumer may draw to it, so a pair whose only wrong end is a finding used as a source is permitted by the grid's permission union.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-scan-edges-1 | The Sentences Connect | Implemented | Each edge connects its endpoints and carries the dimension above. | `tests/test_vulnerability_scanner_scan_run.py::TestEdges::test_the_sentences_connect_and_take_the_target_type_dimension` |
+| req-compliance-core-scan-edges-2 | Fixed Versions Is A List | Implemented | `fixed_versions` accepts a list of strings, including `[]`; a string, a list of numbers or an unknown property is refused. | `::TestEdges::test_fixed_versions_is_a_list_that_may_be_empty`, `::test_fixed_versions_rejects_a_non_list_and_extra_keys` |
+| req-compliance-core-scan-edges-3 | Wrong Ends Refused | Implemented | An edge in the wrong direction, or to the wrong type, at a scanner, run or vulnerability is refused. | `::TestEdges::test_the_wrong_way_round_or_wrong_type_is_refused` |
+| req-compliance-core-scan-edges-4 | A Location May Be Any Node | Implemented | `RUNS_AT_LOCATION` accepts any node as its target from a scanner. | `::TestEdges::test_a_location_may_be_any_node` |
+| req-compliance-core-scan-edges-5 | Plain Identity, References Only | Implemented | Every edge declares `{"discriminators": []}`, a re-sent edge is the same edge, and none is containment. | `::TestEdges::test_every_new_edge_declares_the_plain_identity_and_a_dimension`, `::TestIdentity::test_a_resent_edge_is_the_same_edge`, `::TestEdges::test_none_of_them_is_containment` |
+| req-compliance-core-scan-edges-6 | Detects Only Without Runs | Deferred | A tool with runs reports through the run; `DETECTS_COMPLIANCE_FINDING` is for a tool without. | Producer's rule: the plugin cannot see whether a tool has runs. |
+| req-compliance-core-scan-edges-7 | Cardinality Is The Producer's | Deferred | One scanner per run and one reporting run per finding. | Not enforced: edge definitions carry no cardinality. A guard would need a core constraint. |
+| req-compliance-core-scan-edges-8 | Two Paths To Count A Scanner's Findings | Deferred | A page counting findings per scanner needs both paths, scanner to run to finding and scanner to finding. | Gryphon has no UNION, so that is two Searches combined in JS, or two cards. |
 
 ### Naming Discipline
 ----
