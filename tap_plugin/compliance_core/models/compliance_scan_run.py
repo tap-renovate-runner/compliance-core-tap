@@ -69,11 +69,11 @@ class ComplianceScanRun(BaseModel):
         "commit_sha": {"type": ["string", "null"]},
         "ref": {"type": ["string", "null"]},
         "category": {"type": ["string", "null"]},
-        "observed_at": {"type": ["string", "null"]},
+        "observed_at": {"type": ["string", "null"], "format": "date-time"},
         "outcome": {"type": ["string", "null"]},
         "results_count": {"type": ["integer", "null"], "minimum": 0},
         "data_version": {"type": ["string", "null"], "maxLength": 128},
-        "data_built_at": {"type": ["string", "null"]},
+        "data_built_at": {"type": ["string", "null"], "format": "date-time"},
     }
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
