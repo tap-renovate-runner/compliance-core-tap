@@ -53,6 +53,7 @@ class ComplianceScanRun(BaseModel):
             "edges": [{"type": "REPORTS_COMPLIANCE_FINDING__compliance_core"}],
         },
         {"edges": [{"type": "RUNS_AT_LOCATION__compliance_core"}]},
+        {"edges": [{"type": "SCANNED_COMPLIANCE_TARGET__compliance_core"}]},
     ]
     INBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {
@@ -71,6 +72,8 @@ class ComplianceScanRun(BaseModel):
         "observed_at": {"type": ["string", "null"]},
         "outcome": {"type": ["string", "null"]},
         "results_count": {"type": ["integer", "null"], "minimum": 0},
+        "data_version": {"type": ["string", "null"], "maxLength": 128},
+        "data_built_at": {"type": ["string", "null"]},
     }
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
@@ -138,6 +141,20 @@ class ComplianceScanRun(BaseModel):
         blank=True,
         default=None,
         help_text="Results the run reported. 0 = reported nothing; null = unobserved.",
+    )
+    data_version = models.CharField(  # noqa: DJ001  (req-compliance-core-scan-run-2)
+        max_length=128,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="The version or build identifier of the vulnerability database the scanner matched against, "
+        "as the scanner reports it. Null = unobserved.",
+    )
+    data_built_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="When that database says it was built, so a run against a stale database is visible.",
     )
 
     class Meta(BaseModel.Meta):

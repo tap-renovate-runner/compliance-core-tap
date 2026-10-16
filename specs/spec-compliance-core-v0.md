@@ -40,7 +40,8 @@
     `COVERS_COMPLIANCE_FINDING`, `CARRIES_COMPLIANCE_FINDING`,
     `SCOPED_TO_COMPLIANCE_BOUNDARY`, `CONCERNS_COMPLIANCE_CONTROL`; and, added 2026-10-15,
     `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`,
-    `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`
+    `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, and, added
+    2026-10-15 (Issue# 38 - this repo), `SCANNED_COMPLIANCE_TARGET`
     (see `req-compliance-core-scan-edges`).
   - **Default dimensions** (see `req-compliance-core-regime-neutral`): a neutral
     per-type marker under the `compliance` key (e.g. `compliance: finding`); the
@@ -133,8 +134,8 @@ layer.
 | req-compliance-core-regime-neutral | [Regime On The Instance](#regime-on-the-instance) | Implemented | Model default is a neutral type marker; regime layered per-instance. Fixes the hardcoded `fedramp-20x` default. |
 | req-compliance-core-vulnerability | [Vulnerability Modeling](#vulnerability-modeling) | Implemented | `compliance_vulnerability`: a public record (CVE, else GHSA) named once however many tools report it; CVSS, CWE, SSVC and KEV facts live here, not on every finding. |
 | req-compliance-core-scanner | [Scanner Modeling](#scanner-modeling) | Implemented | `compliance_scanner`: an installed instance of a detection tool at one place, never a version. |
-| req-compliance-core-scan-run | [Scan Run Modeling](#scan-run-modeling) | Implemented | `compliance_scan_run`: one execution of a scanner; carries the tool version, commit, ref, category, time, outcome and result count. |
-| req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`. |
+| req-compliance-core-scan-run | [Scan Run Modeling](#scan-run-modeling) | Implemented | `compliance_scan_run`: one execution of a scanner; carries the tool version, commit, ref, category, time, outcome, result count and the database build it matched against. |
+| req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, `SCANNED_COMPLIANCE_TARGET`. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
@@ -402,6 +403,7 @@ A `compliance_scan_run` is one execution of a scanner. It sits between the scann
 | `observed_at` | When the producer observed the run. |
 | `outcome` | How the run ended, as the producer says it; `null` where not observed. A run derived from an alert's latest instance cannot say. |
 | `results_count` | Results reported. `0` is a run that reported nothing; `null` is unobserved. |
+| `data_version`, `data_built_at` | The version or build identifier of the vulnerability database the scanner matched against, as the scanner reports it, and when that database says it was built. A run against a stale database is then visible as one. `null` where not observed. |
 
 All fields but `source` and `run_key` are `null` when unobserved. Display name is `run_key`. Default dimensions are `{"compliance": "scan-run"}`.
 
@@ -417,6 +419,7 @@ Where the runs come from is not decided here: real `code_scanning_analysis` node
 | req-compliance-core-scan-run-2 | Null Is Unobserved, Zero Is A Result | Implemented | A run written without `outcome` stores `null`; `results_count` `0` is stored as `0`. | Authorizes the model's `# noqa: DJ001  (req-compliance-core-scan-run-2)`. `::TestNodes::test_an_unwritten_field_is_unobserved_and_an_empty_one_is_observed_empty` |
 | req-compliance-core-scan-run-3 | Values Are Checked | Implemented | A negative or non-integer `results_count`, or a non-string `commit_sha`, is refused. | `::TestNodes::test_scan_run_schema_rejects` |
 | req-compliance-core-scan-run-4 | Known-Dupe Parity | Implemented | Each field the run repeats from `github_core__code_scanning_analysis` exists on both sides. | Skips on a stack without `github_core`. `::TestKnownDupe::test_every_repeated_field_exists_on_both_sides` |
+| req-compliance-core-scan-run-5 | Names Its Database | Implemented | `data_version` is a string of at most 128 characters and `data_built_at` an ISO datetime; both are `null` until a producer writes them, and a non-string is refused. | `::TestNodes::test_a_scan_run_names_the_database_it_matched_against`, `::test_scan_run_schema_rejects`, `::test_an_unwritten_field_is_unobserved_and_an_empty_one_is_observed_empty` |
 
 ### Scan Edges
 ----
@@ -424,7 +427,7 @@ RID: `req-compliance-core-scan-edges`
 
 Status: `Implemented`
 
-Five edges, each its own mechanical relationship, all references (none is containment: retiring a scanner leaves its runs' findings and the shared vulnerability they cite), each declaring the plain identity (type, source, target) so a re-sent edge is the same edge.
+Six edges, each its own mechanical relationship, all references (none is containment: retiring a scanner leaves its runs' findings and the shared vulnerability they cite), each declaring the plain identity (type, source, target) so a re-sent edge is the same edge.
 
 | edge (compliance_core) | endpoints | properties |
 | --- | --- | --- |
@@ -433,6 +436,7 @@ Five edges, each its own mechanical relationship, all references (none is contai
 | `REPORTS_COMPLIANCE_FINDING` | `compliance_scan_run` → `compliance_finding` | none |
 | `DETECTS_COMPLIANCE_FINDING` | `compliance_scanner` → `compliance_finding` | optional `tool_version`, `category`. |
 | `RUNS_AT_LOCATION` | `compliance_scanner` or `compliance_scan_run` → any node (wildcard target) | `locator`: the place as the data gave it. |
+| `SCANNED_COMPLIANCE_TARGET` | `compliance_scan_run` → any node (wildcard target) | `outcome`: required string, the producer's own word for how the examination ended; optional `reason`. |
 
 **`CONCERNS_COMPLIANCE_VULNERABILITY`** is named after `CONCERNS_COMPLIANCE_CONTROL`. Its `fixed_versions` is the fix in the component the finding is about, because the same vulnerability is fixed at a different version in each component. `[]` means the source looked and named no fix; an absent property means it was not observed.
 
@@ -446,7 +450,9 @@ Five edges, each its own mechanical relationship, all references (none is contai
 
 **`RUNS_AT_LOCATION`** is the one edge of the five that is not named for a compliance object. Its target is a wildcard on purpose, for the reason `CONCERNS_COMPLIANCE_CONTROL` has one: the place is whatever the producer's world has (today the `github_core__github_platform` node for github.com; later the workflow, job or actions-run node when a collector puts it on the grid), and compliance_core must not name a producer's types. A scanner's location is where it is installed; a run's is where it executed. It passes the edge-naming check (`<ACTION>_<OBJECT>` with a locative preposition inside the slug, not at its end).
 
-**Dimensions.** Edge default dimensions follow the target's type marker, as `CARRIES_COMPLIANCE_FINDING` and `CONCERNS_COMPLIANCE_CONTROL` do: `vulnerability`, `scan-run`, `finding`, `finding`. `RUNS_AT_LOCATION` has no typed target, so it takes the source's family, `scanner`.
+**`SCANNED_COMPLIANCE_TARGET`** says that a run examined a target and how that ended for it (`scanned`, `not-scanned`, `failed`: the producer's words, not a closed vocabulary). It exists because a run's `REPORTS_COMPLIANCE_FINDING` edges only say what it found: without this edge a target the run could not examine reads the same as one it examined and found clean. Its target is a wildcard for the reason `RUNS_AT_LOCATION`'s is, since what a scanner examines is whatever the producer's world has. It differs from `RUNS_AT_LOCATION`, which is where a run executed, not what it looked at. Whether a run keeps one such edge per target or only the latest is the producer's, as for `REPORTS_COMPLIANCE_FINDING`.
+
+**Dimensions.** Edge default dimensions follow the target's type marker, as `CARRIES_COMPLIANCE_FINDING` and `CONCERNS_COMPLIANCE_CONTROL` do: `vulnerability`, `scan-run`, `finding`, `finding`. `RUNS_AT_LOCATION` has no typed target, so it takes the source's family, `scanner`; `SCANNED_COMPLIANCE_TARGET` has none either and takes its source's, `scan-run`.
 
 **Wrong ends.** The three new nodes declare their edges (`OUTBOUND_EDGES` / `INBOUND_EDGES`), so a wrong-way or wrong-type edge at one of them is refused. `compliance_finding` declares none and gaining some would change what every consumer may draw to it, so a pair whose only wrong end is a finding used as a source is permitted by the grid's permission union.
 
@@ -462,6 +468,8 @@ Five edges, each its own mechanical relationship, all references (none is contai
 | req-compliance-core-scan-edges-6 | Detects Only Without Runs | Deferred | A tool with runs reports through the run; `DETECTS_COMPLIANCE_FINDING` is for a tool without. | Producer's rule: the plugin cannot see whether a tool has runs. |
 | req-compliance-core-scan-edges-7 | Cardinality Is The Producer's | Deferred | One scanner per run and one reporting run per finding. | Not enforced: edge definitions carry no cardinality. A guard would need a core constraint. |
 | req-compliance-core-scan-edges-8 | Two Paths To Count A Scanner's Findings | Deferred | A page counting findings per scanner needs both paths, scanner to run to finding and scanner to finding. | Gryphon has no UNION, so that is two Searches combined in JS, or two cards. |
+| req-compliance-core-scan-edges-9 | A Run May Scan Any Node | Implemented | `SCANNED_COMPLIANCE_TARGET` accepts any node as its target from a scan run, carries the `scan-run` dimension, and keeps `outcome` and `reason` as written. | `::TestEdges::test_a_run_may_scan_any_node_and_says_how_it_ended` |
+| req-compliance-core-scan-edges-10 | Outcome Is Required, Only Runs Scan | Implemented | A `SCANNED_COMPLIANCE_TARGET` without a string `outcome`, with an empty one, or with an unknown property is refused, and a scanner or vulnerability as its source is refused. | `::TestEdges::test_a_scanned_target_edge_requires_a_string_outcome`, `::test_only_a_run_may_scan_a_target` |
 
 ### Naming Discipline
 ----
