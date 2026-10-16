@@ -1,0 +1,32 @@
+{
+  "slug": "SCANNED_COMPLIANCE_TARGET__compliance_core",
+  "name": "Scanned Compliance Target",
+  "description": "A scan run examined a target, and this is how that ended for it. Wildcard target because what a scanner examines is whatever the producer's world has (a package, a host, an image, a repository), and compliance_core must not name a producer's types. The outcome is the producer's own word for it (scanned, not-scanned, failed); without the edge, a target a run could not examine cannot be told from one it examined and found clean.",
+  "sources": [
+    "compliance_core__compliance_scan_run"
+  ],
+  "property_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "outcome"
+    ],
+    "properties": {
+      "outcome": {
+        "type": "string",
+        "minLength": 1,
+        "description": "How the run's examination of this target ended, in the producer's own words (scanned, not-scanned, failed)."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why, when the outcome needs saying (the database was stale, the package had no purl)."
+      }
+    }
+  },
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "scan-run"
+  }
+}

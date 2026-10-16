@@ -30,6 +30,7 @@ PERFORMS_COMPLIANCE_SCAN_RUN__compliance_core = "edges/PERFORMS_COMPLIANCE_SCAN_
 REPORTS_COMPLIANCE_FINDING__compliance_core = "edges/REPORTS_COMPLIANCE_FINDING.edge.json"
 DETECTS_COMPLIANCE_FINDING__compliance_core = "edges/DETECTS_COMPLIANCE_FINDING.edge.json"
 RUNS_AT_LOCATION__compliance_core = "edges/RUNS_AT_LOCATION.edge.json"
+SCANNED_COMPLIANCE_TARGET__compliance_core = "edges/SCANNED_COMPLIANCE_TARGET.edge.json"
 
 [[boot.records]]
 name = "ci"
