@@ -25,6 +25,11 @@ class ComplianceFinding(BaseModel):
     gets a FRESH node on every run rather than an error, because a search over holes is
     honestly "not found" rather than a match on nothing.
 
+    Detection time (`req-compliance-core-finding-detection`): `first_detected_at` is when the
+    producer first detected the finding, null until a source says. It is a fact about the
+    finding, not a judgement, and FedRAMP's vulnerability reporting rules count their evaluation
+    deadline from it.
+
     Spec: plugins/compliance_core/specs/spec-compliance-core-v0.md
     """
 
@@ -56,6 +61,7 @@ class ComplianceFinding(BaseModel):
         "summary": {"type": "string"},
         "description": {"type": "string"},
         "status": {"type": "string", "enum": _STATUS_VALUES},
+        "first_detected_at": {"type": ["string", "null"], "format": "date-time"},
     }
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
@@ -71,6 +77,10 @@ class ComplianceFinding(BaseModel):
             "validation": "jsonschema",
             "schema": {"type": "string", "enum": _STATUS_VALUES},
         },
+        "first_detected_at": {
+            "validation": "jsonschema",
+            "schema": {"type": ["string", "null"], "format": "date-time"},
+        },
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["name"]
 
@@ -85,6 +95,19 @@ class ComplianceFinding(BaseModel):
     summary = models.CharField(max_length=500, blank=True, default="")
     description = models.TextField(blank=True, default="")
     status = models.CharField(max_length=16, blank=True, default="open", db_index=True)
+    #: When the producer first detected this finding, as the producer's own record gives it (a
+    #: GitHub alert's `created_at`; the production time of the earliest SBOM that reported it).
+    #: `null` is unobserved: no source supplied it, and it is never defaulted to the time this grid
+    #: first saw the finding. Not part of the identity. A producer that re-sends a finding must send
+    #: this value again, because a node under an existing key replaces the row and an omitted field
+    #: goes back to null (`req-compliance-core-finding-detection`).
+    first_detected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        default=None,
+        db_index=True,
+        help_text="When the producer first detected the finding. Null = unobserved.",
+    )
 
     class Meta(BaseModel.Meta):
         db_table = "compliance_core__compliance_finding"

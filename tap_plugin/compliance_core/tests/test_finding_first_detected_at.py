@@ -1,0 +1,110 @@
+"""The finding's detection time (`req-compliance-core-finding-detection`).
+
+`first_detected_at` is when the producer first detected a finding, as its own record gives it.
+It is null until a source says (never defaulted to the time this grid first saw the finding), it is
+checked as a date-time, it is not part of the finding's identity, and, because a node under an
+existing key replaces the row, a producer that re-sends a finding has to send it again.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+import pytest
+import tap_plugin.compliance_core.models as compliance  # noqa: F401 - trigger model registration
+
+from tap_grid.grift import grift_import
+from tap_grid.models import Entity
+from tap_grid.registry import get_model_class
+from tap_grid.services import create_node
+
+FINDING_TYPE = "compliance_core__compliance_finding"
+FINDING = {"source": "github_core", "source_key": "unified-systems-com/tap#code_scanning#7", "name": "CVE-2026-1"}
+
+
+def _create(payload: dict[str, Any]) -> Any:
+    result = create_node(FINDING_TYPE, payload)
+    assert result.success, f"create_node failed: {result.errors}"
+    return get_model_class(FINDING_TYPE).objects.get(entity=Entity.objects.get(pk=result.entity_id))
+
+
+def _doc(fields: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "metadata": {"grift_version": "0"},
+        "_reserved": {},
+        "batches": [
+            {
+                "batch_entity": {
+                    "entity_id": str(uuid.uuid4()),
+                    "entity_type": "batch",
+                    "name": "finding detection time test batch",
+                    "dimensions": {},
+                },
+                "batch_node": {
+                    "name": "finding detection time test batch",
+                    "description": "",
+                    "description_json": None,
+                    "source": "test",
+                    "metadata": {},
+                },
+                "nodes": [
+                    {
+                        "entity": {
+                            "ref": "f",
+                            "entity_type": FINDING_TYPE,
+                            "name": fields["name"],
+                            "dimensions": {},
+                        },
+                        "node": dict(fields),
+                    }
+                ],
+                "edges": [],
+            }
+        ],
+    }
+
+
+@pytest.mark.django_db
+class TestFirstDetectedAt:
+    def test_an_unwritten_value_is_unobserved(self) -> None:
+        """req-compliance-core-finding-detection-1: null is "no source said", never a default."""
+        assert _create(FINDING).first_detected_at is None
+
+    def test_a_written_value_round_trips_as_a_datetime(self) -> None:
+        """req-compliance-core-finding-detection-2."""
+        finding = _create({**FINDING, "first_detected_at": "2026-09-25T12:45:55Z"})
+        assert finding.first_detected_at.isoformat() == "2026-09-25T12:45:55+00:00"
+
+    def test_an_explicit_null_is_accepted(self) -> None:
+        assert _create({**FINDING, "first_detected_at": None}).first_detected_at is None
+
+    @pytest.mark.parametrize("bad", ["yesterday", "2026-09-25", 7, True, {"at": "2026-09-25T12:45:55Z"}])
+    def test_a_value_that_is_not_a_date_time_is_refused(self, bad: Any) -> None:
+        """req-compliance-core-finding-detection-3."""
+        assert not create_node(FINDING_TYPE, {**FINDING, "first_detected_at": bad}).success
+
+    def test_it_is_not_part_of_the_identity(self) -> None:
+        """req-compliance-core-finding-detection-4: a corrected time is the same finding, not a new one."""
+        model = get_model_class(FINDING_TYPE)
+        ids = []
+        for stamp in ("2026-09-25T12:45:55Z", "2026-09-20T08:00:00Z"):
+            result = grift_import(_doc({**FINDING, "first_detected_at": stamp}))
+            assert result.success, result.errors
+            ids.append(result.imported_batches[0].resolved_refs["f"])
+        assert ids[0] == ids[1]
+        assert model.objects.live().count() == 1
+        assert model.objects.live().get().first_detected_at.isoformat() == "2026-09-20T08:00:00+00:00"
+
+    def test_a_resend_without_it_goes_back_to_unobserved(self) -> None:
+        """req-compliance-core-finding-detection-5: pins the platform behaviour the producer duty rests on.
+
+        A GRIFT node under an existing key replaces the row (observed 2026-10-19 on another type), so a
+        producer that re-sends this finding and leaves the field out loses it. If the platform ever merges
+        instead, this test fails and the duty can be relaxed.
+        """
+        model = get_model_class(FINDING_TYPE)
+        assert grift_import(_doc({**FINDING, "first_detected_at": "2026-09-25T12:45:55Z"})).success
+        assert grift_import(_doc(dict(FINDING))).success
+        assert model.objects.live().count() == 1
+        assert model.objects.live().get().first_detected_at is None
