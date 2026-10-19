@@ -47,15 +47,23 @@ class ComplianceBoundary(BaseModel):
         "scope for a single compliance authorization. Components link to it "
         "via the SCOPED_TO_COMPLIANCE_BOUNDARY edge."
     )
-    # No type icon: the red box from DEFAULT_DISPLAY is sufficient to read the
-    # boundary on the graph, and the icon badge added visual noise.
+    # No type icon: the box itself is how the boundary reads on the graph, and an icon badge added visual noise.
     ENTITY_ICON: ClassVar[str] = ""
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"compliance": "boundary"}
+    # The FedRAMP standard authorization-boundary drawing (`req-compliance-core-boundary-display`): a
+    # TRANSPARENT box, a bold true-red line, and the title OUTSIDE the box at its top left. Every deployment gets
+    # this look from the type, so no instance restyles the boundary in layout code. `fill` is white only so the
+    # renderer applies the border colour (it is opaque nowhere: `fill_opacity` is 0); the title is the node's name.
+    # `fill_opacity`, `border_width` and an outside, left-anchored `label` are tap_viz display hints
+    # (`req-viz-system-display-hints-9`, `-10`); a core without them draws the box with the white fill and the
+    # red line and centres the title, which is why they are hints and not a rule here.
     DEFAULT_DISPLAY: ClassVar[dict[str, Any]] = {
         "tap_viz": {
             "shape": "round-rectangle",
-            "colors": {"fill": "#FBE4E4", "border": "#D93535", "label": "#A11B1B"},
-            "label": {"valign": "top", "halign": "center", "position": "outside"},
+            "colors": {"fill": "#FFFFFF", "border": "#FF0000", "label": "#FF0000"},
+            "fill_opacity": 0,
+            "border_width": 4,
+            "label": {"valign": "top", "halign": "left", "position": "outside"},
         }
     }
 

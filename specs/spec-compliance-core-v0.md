@@ -129,6 +129,7 @@ layer.
 | --- | --- | :---: | --- |
 | req-compliance-core-scope | [Plugin Scope](#plugin-scope) | Implemented | Substrate library; six models + five edges; no collector. |
 | req-compliance-core-models | [Model Set](#model-set) | Implemented | `compliance_artifact`, `compliance_context`, `compliance_evidence`, `compliance_finding`, `compliance_exception`, `compliance_boundary`. |
+| req-compliance-core-boundary-display | [Boundary Display](#boundary-display) | Implemented | `compliance_boundary` defaults to the FedRAMP authorization-boundary look: transparent box, bold red line, title outside at the top left. |
 | req-compliance-core-edges | [Edge Vocabulary](#edge-vocabulary) | Implemented | `CITES_COMPLIANCE_EVIDENCE`, `COVERS_COMPLIANCE_FINDING`, `CARRIES_COMPLIANCE_FINDING`, `SCOPED_TO_COMPLIANCE_BOUNDARY`, `CONCERNS_COMPLIANCE_CONTROL` (wildcard target). |
 | req-compliance-core-identity | [Assigned Identity](#assigned-identity) | Implemented | Every model declares `NATURAL_KEY`; the five producer-minted types key on `("source", "source_key")`, `compliance_context` on `("regime",)`. Floor `requires_tap >= 0.2.0`. |
 | req-compliance-core-regime-neutral | [Regime On The Instance](#regime-on-the-instance) | Implemented | Model default is a neutral type marker; regime layered per-instance. Fixes the hardcoded `fedramp-20x` default. |
@@ -243,6 +244,24 @@ resolve against a declaration that is not in the pinned version.
 | req-compliance-core-identity-3 | Context keys on its own field | Implemented | `compliance_context` declares `("regime",)`, expressing one-context-per-regime-per-Grid. |
 | req-compliance-core-identity-4 | Re-observation is one node | Implemented | Two writes of the same source object under one producer resolve to one entity id (proved through `grift_import`, not asserted from reading). |
 | req-compliance-core-identity-5 | Core floor | Implemented | `requires_tap >= 0.2.0` — the release carrying the declaration contract, the generated search and `resolve_identity`. |
+
+### Boundary Display
+----
+RID: `req-compliance-core-boundary-display`
+
+Status: `Implemented`
+
+An authorization boundary is drawn the way a FedRAMP authorization-boundary diagram draws it: an
+empty box with a bold red line around what is in scope, titled outside the box at its top left.
+`ComplianceBoundary.DEFAULT_DISPLAY["tap_viz"]` carries that look, so every deployment that shows
+a boundary gets it from the type and none restyles it in layout code. The title is the node's
+`name`; naming it "Authorization Boundary" (or anything else) is the producing instance's data.
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-boundary-display-1 | Transparent box | Implemented | `fill_opacity` is `0`, so the box is only its line and what is inside it shows through. | `colors.fill` is white only so the renderer applies the border colour; nothing is filled. |
+| req-compliance-core-boundary-display-2 | Bold true-red line | Implemented | `colors.border` is `#FF0000` and `border_width` is `4` (px); the label colour is the same red. | Not a pink tint: the previous default was `#D93535` on a `#FBE4E4` fill. |
+| req-compliance-core-boundary-display-3 | Title outside at the top left | Implemented | `label` is `{valign: "top", halign: "left", position: "outside"}`. | Needs tap_viz display hints `fill_opacity`, `border_width` and an anchored outside label (`req-viz-system-display-hints-9`, `-10`); an older core ignores them and draws a white box with a red line and a centred title. |
 
 ### Edge Vocabulary
 ----

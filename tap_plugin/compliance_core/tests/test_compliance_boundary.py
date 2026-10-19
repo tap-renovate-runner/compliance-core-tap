@@ -115,3 +115,27 @@ class TestScopedToBoundaryEdge:
         assert result.results[0].success
         edge = Edge.objects.get(entity_id=result.results[0].entity_id)
         assert edge.entity.dimensions.get("compliance") == "boundary"
+
+
+class TestBoundaryDisplay:
+    """The FedRAMP authorization-boundary look (`req-compliance-core-boundary-display`); no database needed."""
+
+    hints = ComplianceBoundary.DEFAULT_DISPLAY["tap_viz"]
+
+    @pytest.mark.spec("req-compliance-core-boundary-display-1")
+    def test_the_box_is_transparent(self):
+        assert self.hints["fill_opacity"] == 0
+
+    @pytest.mark.spec("req-compliance-core-boundary-display-2")
+    def test_the_line_is_bold_true_red(self):
+        assert self.hints["colors"]["border"] == "#FF0000"
+        assert self.hints["colors"]["label"] == "#FF0000"
+        assert self.hints["border_width"] >= 4
+
+    @pytest.mark.spec("req-compliance-core-boundary-display-3")
+    def test_the_title_stands_outside_at_the_top_left(self):
+        assert self.hints["label"] == {"valign": "top", "halign": "left", "position": "outside"}
+
+    def test_it_carries_no_instance_name(self):
+        # Naming the node "Authorization Boundary" is the producer's data, not this type's display.
+        assert "name" not in self.hints
