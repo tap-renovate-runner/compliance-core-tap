@@ -147,7 +147,8 @@ class TestVulnerabilityComponents:
         # cvss descending, nulls last; the closed-only (VC) and excluded-only (VX) vulns are absent
         assert [r["id"] for r in rows] == ["CVE-9", "CVE-7", "CVE-6.9", "CVE-4", "CVE-3.9", "CVE-NULL"]
         nine, seven, unscored = rows[0], rows[1], rows[-1]
-        assert nine == {
+        # component_items has its own test (req-compliance-core-searches-9); the rest of the row is exact here
+        assert {k: v for k, v in nine.items() if k != "component_items"} == {
             "id": "CVE-9",
             "title": "nine",
             "cvss": 9.8,
@@ -161,6 +162,43 @@ class TestVulnerabilityComponents:
         assert unscored["cvss"] is None and unscored["kev"] is False  # null kev reads as false
         assert all(isinstance(r["components"], int) for r in rows)
         json.dumps(rows)
+
+    @pytest.mark.spec("req-compliance-core-searches-9")
+    def test_component_items_are_structured_distinct_and_sorted(self) -> None:
+        g = Graph()
+        rows = by(vulns(), "id")
+        item = lambda key: {  # noqa: E731
+            "id": str(g.carriers[key].pk),
+            "name": key,
+            "type": CARRIERS[key][0],
+        }
+        # CVE-9: alpha, beta and tomb carry it (excl is excluded); names sort, ids are the carrier entity ids
+        assert rows["CVE-9"]["component_items"] == [item("alpha"), item("beta"), item("tomb")]
+        assert rows["CVE-7"]["component_items"] == [item("alpha"), item("delta"), item("gamma")]
+        for row in rows.values():
+            # the same carriers as component_names (kept unchanged), one item per carrier
+            assert [i["name"] for i in row["component_items"]] == row["component_names"].split(", ")
+            assert len(row["component_items"]) == row["components"]
+            assert all(set(i) == {"id", "name", "type"} and all(isinstance(v, str) for v in i.values()) for i in row["component_items"])
+        json.dumps(list(rows.values()))
+
+    @pytest.mark.spec("req-compliance-core-searches-9")
+    def test_component_items_follow_the_exclusion_and_survive_the_search_service(self) -> None:
+        Graph()
+        assert "excl" not in {i["name"] for i in by(vulns(), "id")["CVE-9"]["component_items"]}
+        assert "excl" in {i["name"] for i in by(vulns(inputs={}), "id")["CVE-9"]["component_items"]}
+        search = Search(
+            search_type="module",
+            root="node",
+            name="vc",
+            definition={"runner_key": f"{KEY}:vulnerability-components"},
+            input_schema={
+                "type": "object",
+                "properties": {"exclude_types": {"type": "array", "items": {"type": "string"}, "default": [EXCLUDED]}},
+            },
+        )
+        rows = execute_search(search, {})["rows"]
+        assert all(isinstance(r["component_items"], list) and r["component_items"] for r in rows)
 
     @pytest.mark.spec("req-compliance-core-searches-3")
     def test_closed_findings_and_excluded_carriers_are_not_counted(self) -> None:

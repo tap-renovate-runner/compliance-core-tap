@@ -23,6 +23,7 @@ from typing import Any
 
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import Count, F, Q
+from django.db.models.functions import JSONObject
 
 from tap_grid.gryphon import read_scope
 from tap_grid.models import Search
@@ -82,6 +83,19 @@ def _envelope(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"nodes": [], "edges": [], "rows": rows, "info": {"row_count": len(rows)}, "warnings": {}}
 
 
+def _component_items(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Carriers as ``{id, name, type}`` (all strings, a missing name or type is ""), one per carrier id, sorted by name then id."""
+    distinct = {
+        str(item["id"]): {
+            "id": str(item["id"]),
+            "name": item.get("name") or "",
+            "type": item.get("type") or "",
+        }
+        for item in items
+    }
+    return sorted(distinct.values(), key=lambda item: (item["name"], item["id"]))
+
+
 def vulnerability_components(
     search: Search, inputs: dict[str, Any], *, db_alias: str, layer: str = "full"
 ) -> dict[str, Any]:
@@ -89,7 +103,10 @@ def vulnerability_components(
 
     Row: ``id``, ``title``, ``cvss`` (number or null), ``kev`` (bool), ``published`` (ISO or
     null), ``components`` (distinct carriers), ``component_names`` (distinct carrier names,
-    sorted, ", "-joined). Order: cvss descending with nulls last, then id.
+    sorted, ", "-joined), ``component_items`` (the same carriers as structured items
+    ``{id, name, type}``, distinct by carrier, sorted by name then id; ``id`` is the carrier's
+    entity id as a string, so a table can link each one). Order: cvss descending with nulls
+    last, then id.
 
     req-compliance-core-searches-vuln-components
     """
@@ -104,7 +121,13 @@ def vulnerability_components(
             vkev=F(f"{vuln}__kev"),
             vpublished=F(f"{vuln}__published_at"),
         )
-        .annotate(n_components=Count("from_entity", distinct=True), names=ArrayAgg("from_entity__name", distinct=True))
+        .annotate(
+            n_components=Count("from_entity", distinct=True),
+            names=ArrayAgg("from_entity__name", distinct=True),
+            items=ArrayAgg(
+                JSONObject(id="from_entity", name="from_entity__name", type="from_entity__entity_type"), distinct=True
+            ),
+        )
         .order_by(F("vcvss").desc(nulls_last=True), "vid", "vuln_pk")
     )
     rows = [
@@ -116,6 +139,7 @@ def vulnerability_components(
             "published": r["vpublished"].isoformat() if r["vpublished"] is not None else None,
             "components": int(r["n_components"]),
             "component_names": ", ".join(sorted({name for name in r["names"] if name})),
+            "component_items": _component_items(r["items"]),
         }
         for r in grouped
     ]

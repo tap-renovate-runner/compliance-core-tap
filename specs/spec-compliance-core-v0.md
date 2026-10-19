@@ -494,6 +494,7 @@ The runners register under the runner's module scope, so a stored Search names t
 | `published` | `published_at` | ISO string or null |
 | `components` | distinct carriers | int |
 | `component_names` | distinct carrier names, sorted, joined by ", " | string |
+| `component_items` | the same carriers as structured items `{id, name, type}`: `id` the carrier's entity id (string), `name`, `type` its entity type; distinct by carrier, sorted by name then id | list of objects |
 
 Order: `cvss` descending with nulls last, then `id`.
 
@@ -521,6 +522,7 @@ Order: `kev` descending, `high` descending, `total` descending, `component`. Cou
 | req-compliance-core-searches-6 | Severity Bands | Implemented | `high` is cvss >= 7, `medium` >= 4 and < 7, `low` < 4; the boundaries 4.0 and 7.0 fall in `medium` and `high`; a null score is counted in `unscored` and in no band; `kev` counts findings on a KEV vulnerability; `total` counts all. | `::TestComponentSeverity::test_boundaries_and_unscored` |
 | req-compliance-core-searches-7 | Component Row Order | Implemented | Rows order by `kev` descending, `high` descending, `total` descending, then `component`. | `::TestComponentSeverity::test_order` |
 | req-compliance-core-searches-8 | Input Validated | Implemented | An `exclude_types` that is not an array of strings is refused. | `::TestRegistration::test_exclude_types_must_be_strings` |
+| req-compliance-core-searches-9 | Component Items | Implemented | Each `vulnerability-components` row carries `component_items`: one `{id, name, type}` per distinct counted carrier, `id` the carrier's entity id as a string, sorted by name then id, the same carriers as `component_names` (which is unchanged); the list survives `json.dumps` and the search service, so a table can link each component. | `::TestVulnerabilityComponents::test_component_items_are_structured_distinct_and_sorted` |
 
 ### Naming Discipline
 ----
