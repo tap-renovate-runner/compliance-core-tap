@@ -136,6 +136,7 @@ layer.
 | req-compliance-core-scanner | [Scanner Modeling](#scanner-modeling) | Implemented | `compliance_scanner`: an installed instance of a detection tool at one place, never a version. |
 | req-compliance-core-scan-run | [Scan Run Modeling](#scan-run-modeling) | Implemented | `compliance_scan_run`: one execution of a scanner; carries the tool version, commit, ref, category, time, outcome, result count and the database build it matched against. |
 | req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, `SCANNED_COMPLIANCE_TARGET`. |
+| req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
@@ -470,6 +471,56 @@ Six edges, each its own mechanical relationship, all references (none is contain
 | req-compliance-core-scan-edges-8 | Two Paths To Count A Scanner's Findings | Deferred | A page counting findings per scanner needs both paths, scanner to run to finding and scanner to finding. | Gryphon has no UNION, so that is two Searches combined in JS, or two cards. |
 | req-compliance-core-scan-edges-9 | A Run May Scan Any Node | Implemented | `SCANNED_COMPLIANCE_TARGET` accepts any node as its target from a scan run, carries the `scan-run` dimension, and keeps `outcome` and `reason` as written. | `::TestEdges::test_a_run_may_scan_any_node_and_says_how_it_ended` |
 | req-compliance-core-scan-edges-10 | Outcome Is Required, Only Runs Scan | Implemented | A `SCANNED_COMPLIANCE_TARGET` without a string `outcome`, with an empty one, or with an unknown property is refused, and a scanner or vulnerability as its source is refused. | `::TestEdges::test_a_scanned_target_edge_requires_a_string_outcome`, `::test_only_a_run_may_scan_a_target` |
+
+### Vulnerability Cross-Tab Searches
+
+RID: `req-compliance-core-searches`
+
+Status: `Implemented`
+
+Two vulnerability tables need a conditional count and a group-concat, which Gryphon does not have. George ruled they are computed with Django ORM aggregation in `module` Search runners (`req-grid-search-module`), declared in the manifest `[searches]` table and implemented in `tap_plugin/compliance_core/searches/cross_tabs.py`. Each returns an envelope with empty `nodes` and `edges`, `info` and `warnings`, and the table in `rows` (a table panel renders envelope `rows` as a projection). Every row value is JSON-serialisable and counts are integers.
+
+The runners register under the runner's module scope, so a stored Search names them `tap_plugin.compliance_core.searches.cross_tabs:vulnerability-components` and `...:component-severity`.
+
+**The shared rule.** A finding counts when its `status` is `open`, it concerns a vulnerability (`CONCERNS_COMPLIANCE_VULNERABILITY`, finding to vulnerability) and a carrier (`CARRIES_COMPLIANCE_FINDING`, carrier to finding) whose `entity_type` is not in the input `exclude_types` carries it. `exclude_types` is an array of strings supplied by the Search (absent means none); no carrier type is named in code.
+
+**Read rules.** Every relation starts from `tap_grid.gryphon.read_scope` (`edge_relation` plus the scoped second hop), so tombstoned nodes and edges, and edges onto tombstones, are excluded; the caller's `db_alias` is used; the compiled query passes `assert_query_scoped` before it runs.
+
+| row field | `vulnerability-components`: one row per vulnerability with at least one counted finding | meaning |
+| --- | --- | --- |
+| `id`, `title` | `vuln_id`, `title` | |
+| `cvss` | `cvss_score` | number or null |
+| `kev` | `kev` | bool (null is false) |
+| `published` | `published_at` | ISO string or null |
+| `components` | distinct carriers | int |
+| `component_names` | distinct carrier names, sorted, joined by ", " | string |
+
+Order: `cvss` descending with nulls last, then `id`.
+
+| row field | `component-severity`: one row per carrier with at least one counted finding | meaning |
+| --- | --- | --- |
+| `cid`, `component`, `type` | carrier entity id, name, entity type | |
+| `high` | findings whose vulnerability `cvss_score` >= 7 (critical folds into high) | int |
+| `medium` | `cvss_score` >= 4 and < 7 | int |
+| `low` | `cvss_score` < 4 | int |
+| `unscored` | vulnerability has a null `cvss_score`; in none of the three bands | int |
+| `kev` | findings whose vulnerability `kev` is true | int |
+| `total` | all counted findings | int |
+
+Order: `kev` descending, `high` descending, `total` descending, `component`. Counts are distinct findings, computed with conditional aggregation (`Count(..., filter=Q(...))`) in one query.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-searches-1 | Registered From The Manifest | Implemented | Both runners are declared in `[searches]` and registered in the search runner registry at plugin load. | `tests/test_cross_tab_searches.py::TestRegistration` |
+| req-compliance-core-searches-2 | Envelope Shape | Implemented | Each runner's result is accepted by the search service, carries empty `nodes` and `edges` and `info` and `warnings` dicts, and every value in `rows` survives `json.dumps`. | `::TestRegistration::test_a_module_search_runs_through_the_search_service` |
+| req-compliance-core-searches-3 | Open Findings Only, Exclusions From Input | Implemented | Closed (`resolved`) findings are not counted; carriers whose type is in `exclude_types` are not counted; no type name is hardcoded. | `::TestVulnerabilityComponents::test_closed_findings_and_excluded_carriers_are_not_counted` |
+| req-compliance-core-searches-4 | Read Scope | Implemented | A tombstoned carrier, finding or vulnerability, and a tombstoned edge, contribute nothing. | `::TestReadScope` |
+| req-compliance-core-searches-5 | Vulnerability Rows | Implemented | `components` counts distinct carriers (two carriers sharing a vulnerability are 2), `component_names` is sorted and joined by ", ", `cvss` may be null, `kev` is a bool, `published` an ISO string or null; rows order by cvss descending, nulls last, then id. | `::TestVulnerabilityComponents` |
+| req-compliance-core-searches-6 | Severity Bands | Implemented | `high` is cvss >= 7, `medium` >= 4 and < 7, `low` < 4; the boundaries 4.0 and 7.0 fall in `medium` and `high`; a null score is counted in `unscored` and in no band; `kev` counts findings on a KEV vulnerability; `total` counts all. | `::TestComponentSeverity::test_boundaries_and_unscored` |
+| req-compliance-core-searches-7 | Component Row Order | Implemented | Rows order by `kev` descending, `high` descending, `total` descending, then `component`. | `::TestComponentSeverity::test_order` |
+| req-compliance-core-searches-8 | Input Validated | Implemented | An `exclude_types` that is not an array of strings is refused. | `::TestRegistration::test_exclude_types_must_be_strings` |
 
 ### Naming Discipline
 ----
