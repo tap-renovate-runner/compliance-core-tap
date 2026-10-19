@@ -137,6 +137,7 @@ layer.
 | req-compliance-core-scan-run | [Scan Run Modeling](#scan-run-modeling) | Implemented | `compliance_scan_run`: one execution of a scanner; carries the tool version, commit, ref, category, time, outcome, result count and the database build it matched against. |
 | req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, `SCANNED_COMPLIANCE_TARGET`. |
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
+| req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
@@ -523,6 +524,46 @@ Order: `kev` descending, `high` descending, `total` descending, `component`. Cou
 | req-compliance-core-searches-7 | Component Row Order | Implemented | Rows order by `kev` descending, `high` descending, `total` descending, then `component`. | `::TestComponentSeverity::test_order` |
 | req-compliance-core-searches-8 | Input Validated | Implemented | An `exclude_types` that is not an array of strings is refused. | `::TestRegistration::test_exclude_types_must_be_strings` |
 | req-compliance-core-searches-9 | Component Items | Implemented | Each `vulnerability-components` row carries `component_items`: one `{id, name, type}` per distinct counted carrier, `id` the carrier's entity id as a string, sorted by name then id, the same carriers as `component_names` (which is unchanged); the list survives `json.dumps` and the search service, so a table can link each component. | `::TestVulnerabilityComponents::test_component_items_are_structured_distinct_and_sorted` |
+
+### Findings Reached Searches
+
+RID: `req-compliance-core-reach`
+
+Status: `Implemented`
+
+**Gryphon has no multi-path aggregate / union-sum.** A query with several MATCH clauses is a union of the clauses, but a row projection with aggregates needs exactly one MATCH clause, and variables cannot be shared across clauses, so "the open findings of this system reached by two different routes, counted once" cannot be written in Gryphon. Two `module` Search runners compute it with Django ORM reads under the read rules Gryphon applies (`req-grid-search-module`), in `tap_plugin/compliance_core/searches/reach.py`, registered in the manifest `[searches]` table and stored as `tap_plugin.compliance_core.searches.reach:findings-reached-count` and `...:findings-reached-list`. A Search that uses them should say in its description that Gryphon lacks this capability.
+
+The runners know no other plugin's type names. Their inputs come from the Search's `input_schema` defaults:
+
+| input | meaning |
+| --- | --- |
+| `root_type` | The `entity_type` of the roots (required string). |
+| `paths` | A non-empty array of at most 8 chains; each chain is a non-empty array of at most 8 edge types, followed outward (edge `from` to `to`) from a root. The entities a chain ends on are carriers. |
+| `entity_id` | Optional: only this root. |
+| `max_results` | `findings-reached-list` only: 1 to 5000, default 1000. |
+
+**The counting rule.** A finding counts for a root when its `status` is `open`, a carrier carries it (`CARRIES_COMPLIANCE_FINDING`, carrier to finding) and it concerns a live vulnerability (`CONCERNS_COMPLIANCE_VULNERABILITY`). A finding reached by two chains or by two carriers counts once for the root. Tombstoned roots, carriers, findings and vulnerabilities, and tombstoned edges, contribute nothing.
+
+| runner | rows |
+| --- | --- |
+| `findings-reached-count` | One row per root with at least one counted finding: `entity_id` (the root), `count` (int). |
+| `findings-reached-list` | One row per counted finding: `entity_id` (the root), `name` (`<id> \| CVSS <score or n/a> \| <title>`), `id` (the vulnerability's `vuln_id`), `cvss`, `title`, `finding_id`. A finding that concerns several vulnerabilities is listed once, under its highest-scored one. Order: `cvss` descending (unscored last), `id`, `finding_id`. |
+
+The tap_viz status badge population reads `entity_id` and `count`; its info window reads `entity_id` and `name`, and `id` for a row link (`row_url_template`).
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-reach-1 | Registered From The Manifest | Implemented | Both runners are declared in `[searches]` and registered in the search runner registry at plugin load. | `tests/test_reach_searches.py::TestRegistration` |
+| req-compliance-core-reach-2 | Envelope Shape | Implemented | Each runner's result passes through the search service with the Search's `input_schema` defaults applied, has empty `nodes` and `edges`, and every value in `rows` survives `json.dumps`. | `::TestRegistration::test_a_module_search_runs_through_the_search_service_with_the_schema_defaults` |
+| req-compliance-core-reach-3 | Paths Are Summed Without Double Counting | Implemented | Findings reached by two chains or carried by two carriers count once; each chain alone reaches fewer than their union. | `::TestCount` |
+| req-compliance-core-reach-4 | Open, Concerning Findings Only | Implemented | A `resolved` finding, a finding that concerns no vulnerability and a finding whose only carries edge is retired are not counted. | `::TestCount::test_closed_unconcerning_and_retired_edge_findings_are_not_counted` |
+| req-compliance-core-reach-5 | Read Scope | Implemented | A tombstoned carrier and a tombstoned edge on a chain contribute nothing. | `::TestCount::test_a_tombstoned_carrier_and_a_retired_path_edge_contribute_nothing` |
+| req-compliance-core-reach-6 | One Root | Implemented | `entity_id` restricts both runners to that root. | `::TestCount::test_entity_id_restricts_to_one_root` |
+| req-compliance-core-reach-7 | List Rows | Implemented | One row per counted finding, highest `cvss` first, named `<id> \| CVSS <score> \| <title>`; a finding concerning two vulnerabilities is listed once under the higher score; an unscored one reads `n/a` and sorts last. | `::TestList` |
+| req-compliance-core-reach-8 | Result Limit | Implemented | `max_results` bounds the rows of `findings-reached-list`. | `::TestList::test_max_results_limits_the_rows` |
+| req-compliance-core-reach-9 | Input Validated | Implemented | A missing or non-string `root_type`, missing, empty or malformed `paths`, more than 8 chains, a chain longer than 8 edges, a non-string `entity_id` and an out-of-range `max_results` are refused with a `ValueError` naming the input. | `::TestInputs` |
 
 ### Naming Discipline
 ----

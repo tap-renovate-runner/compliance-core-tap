@@ -37,6 +37,8 @@ SCANNED_COMPLIANCE_TARGET__compliance_core = "edges/SCANNED_COMPLIANCE_TARGET.ed
 [searches]
 vulnerability-components = "tap_plugin.compliance_core.searches.cross_tabs.vulnerability_components"
 component-severity = "tap_plugin.compliance_core.searches.cross_tabs.component_severity"
+findings-reached-count = "tap_plugin.compliance_core.searches.reach.findings_reached_count"
+findings-reached-list = "tap_plugin.compliance_core.searches.reach.findings_reached_list"
 
 [[boot.records]]
 name = "ci"
