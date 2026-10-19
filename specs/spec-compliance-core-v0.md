@@ -686,7 +686,7 @@ An exception is the rule; it can be one a person wrote down in a risk register, 
 
 #### Implementation
 
-- `ComplianceException` in `tap_plugin/compliance_core/models/compliance_exception.py` gains the seven columns, each nullable, in `FIELD_CRUD_SCHEMA` and `FIELD_VALIDATION_SCHEMA` with a description on every field. `justification` validates against the five labels and is refused unless `kind` is `not-affected`. `CREATE_REQUIRED` stays `["name"]`.
+- `ComplianceException` in `tap_plugin/compliance_core/models/compliance_exception.py` gains the seven columns, each nullable, in `FIELD_CRUD_SCHEMA` and `FIELD_VALIDATION_SCHEMA` with a description on every field. `justification` validates against the five labels per field; the cross-field rule that it is refused unless `kind` is `not-affected` is a `validate()` override on the model, the whole-record hook that `full_validate()` calls after the per-field checks (`req-grid-entity-validation-9`), raising a `ValidationError` keyed on `justification`. `CREATE_REQUIRED` stays `["name"]`.
 - `CONTAINMENT_EDGES = ("GRANTS_COMPLIANCE_EXCEPTION_INSTANCE",)`, a permitted outbound edge of the model (`tap_grid/models.py` refuses a containment declaration naming an edge the model may not emit).
 - A schema migration, numbered when built (main's latest is `0007`), adds the columns; it rewrites no row.
 
