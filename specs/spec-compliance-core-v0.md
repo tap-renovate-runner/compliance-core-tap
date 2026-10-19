@@ -24,6 +24,12 @@
 > `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`,
 > `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`. Vocabulary only;
 > no collector emits them. Migration `0005`.
+>
+> **Exceptions as code proposed 2026-10-19** (design ruled by George in conversation; every requirement
+> below marked `Proposed`): `compliance_exception` gains the fields a decision needs, a new node
+> `compliance_exception_instance` holds each exception's per-scope, per-check application, and
+> `COVERS_COMPLIANCE_FINDING` moves from the exception to the instance
+> (`req-compliance-core-exception` .. `-exception-checker`).
 
 ## Plugin Identity
 
@@ -35,14 +41,17 @@
     `compliance_context`, `compliance_evidence`, `compliance_finding`,
     `compliance_exception`, `compliance_boundary`; and, added 2026-10-15,
     `compliance_vulnerability`, `compliance_scanner`, `compliance_scan_run`
-    (see `req-compliance-core-vulnerability`, `-scanner`, `-scan-run`).
+    (see `req-compliance-core-vulnerability`, `-scanner`, `-scan-run`); proposed 2026-10-19,
+    `compliance_exception_instance` (see `req-compliance-core-exception-instance`).
   - **Edge types** (see `req-compliance-core-edges`): `CITES_COMPLIANCE_EVIDENCE`,
     `COVERS_COMPLIANCE_FINDING`, `CARRIES_COMPLIANCE_FINDING`,
     `SCOPED_TO_COMPLIANCE_BOUNDARY`, `CONCERNS_COMPLIANCE_CONTROL`; and, added 2026-10-15,
     `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`,
     `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, and, added
     2026-10-15 (Issue# 38 - this repo), `SCANNED_COMPLIANCE_TARGET`
-    (see `req-compliance-core-scan-edges`).
+    (see `req-compliance-core-scan-edges`); proposed 2026-10-19, `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE`,
+    `EXEMPTS_COMPLIANCE_VULNERABILITY`, `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET`
+    (see `req-compliance-core-exception-edges`).
   - **Default dimensions** (see `req-compliance-core-regime-neutral`): a neutral
     per-type marker under the `compliance` key (e.g. `compliance: finding`); the
     **regime** dimension (`fedramp-20x`, `soc2`, …) is layered per-instance by the
@@ -111,6 +120,36 @@ layer.
   assessment artifacts.
 - **The cross-regime pattern**: SOC2, CMMC, ISO 27001 all carry evidence, findings,
   exceptions, and a scoping boundary — the reason the layer is regime-agnostic.
+- **How exceptions are implemented elsewhere** (read 2026-10-19 from the tools' own documentation and
+  source; the pages were summarised by a fetch tool, so check a citation before relying on it):
+  - *DefectDojo* `Risk_Acceptance`: a container with a many-to-many to findings, an owner, `accepted_by`,
+    `expiration_date` and flags for what to do on expiry. It writes `active=False` and
+    `risk_accepted=True` onto each finding and reverses that in four code paths (expire, reinstate,
+    delete, remove); expiry marks the acceptance handled and never deletes it. Borrowed: the
+    container-and-members shape and expiry that is recorded, not silent. Rejected: mutating the
+    finding's own state, which is why coverage here is computed (`req-compliance-core-exception-coverage`).
+  - *Trivy* `.trivyignore.yaml` and *Grype* ignore rules: a rule of vulnerability id plus optional
+    paths, package URLs, name, version and location, all of which must match; a free-text statement or
+    reason; Trivy adds an optional `expired_at` and, per its documentation, an entry without one is
+    valid forever. Both can print the suppressed findings with the rule that suppressed them. Borrowed:
+    scope as an AND of anchors, and the record of what was suppressed and why. Rejected: no expiry by
+    default.
+  - *Kyverno* `PolicyException`: a separate resource naming a policy and rules, with a selector and
+    conditions, evaluated on every admission and background scan; each match lands in the policy report
+    as a `skip` naming the exception. No expiry field is described. Borrowed: the exception is a rule
+    re-evaluated on every pass, and each evaluation is a recorded result. That recorded result is
+    `compliance_exception_instance`.
+  - *OpenVEX* and *CycloneDX VEX*: one statement per vulnerability and product (identified by package URL
+    or hash) with a status and, for `not_affected`, one of five justification labels; later statements
+    supersede earlier ones by timestamp. No expiry. Borrowed: the justification labels.
+  - *GitHub code scanning*: a dismissal is state on the alert itself (`dismissed_reason` of
+    `false positive`, `won't fix`, `used in tests` or `mitigated`, `dismissed_by`, `dismissed_at` and a
+    comment capped at 280 characters). Borrowed: the reason vocabulary. Rejected: state on the finding,
+    which leaves no history and no scope beyond that one alert.
+  - *FedRAMP / OSCAL POA&M*: deviations (false positive, operational requirement, risk adjustment) are
+    carried as part of the risk, each with a justification and an approval status. The OSCAL element
+    detail was not read. Borrowed: the three deviation ideas, folded into `kind` below without the
+    approval workflow.
 
 ## Goals
 
@@ -140,6 +179,12 @@ layer.
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
 | req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
+| req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Proposed | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
+| req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Proposed | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
+| req-compliance-core-exception-edges | [Exception Edges](#exception-edges) | Proposed | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` (containment), `EXEMPTS_COMPLIANCE_VULNERABILITY`, `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET`; `COVERS_COMPLIANCE_FINDING` moves to the instance; `CITES_COMPLIANCE_EVIDENCE` accepts an instance. |
+| req-compliance-core-exception-coverage | [Exception Coverage](#exception-coverage) | Proposed | Coverage is computed, never stored: two `module` Search runners, `finding-exception-coverage` and `exceptions-due-review`. Unset or stale means not covered. |
+| req-compliance-core-exception-lifecycle | [Exception Lifecycle](#exception-lifecycle) | Proposed | Withdrawal cascades through containment; falsification updates the instance and keeps it; a re-minted finding is a new entity the checker must re-bind. |
+| req-compliance-core-exception-checker | [Exception Checker Contract](#exception-checker-contract) | Proposed | What a plugin that checks an exception on a schedule owes the grid; compliance_core ships no checker. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
@@ -174,7 +219,7 @@ faithfully from the `fedramp_20x_ksi` originals:
 | `compliance_core__compliance_context` | `fedramp_20x_ksi__compliance_context` | `regime` (discriminator **and identity**), `fedramp_class` (+ future per-regime posture fields) |
 | `compliance_core__compliance_evidence` | `fedramp_20x_ksi__evidence` | `name`, `description`, `kind`, `source` + `source_key` (identity) |
 | `compliance_core__compliance_finding` | `fedramp_20x_ksi__finding` | `name`, `summary`, `description`, `status`, `first_detected_at` (added 2026-10-19, see `req-compliance-core-finding-detection`), `source` + `source_key` (identity) |
-| `compliance_core__compliance_exception` | `fedramp_20x_ksi__exception` | `name`, `description`, `status`, `source` + `source_key` (identity) |
+| `compliance_core__compliance_exception` | `fedramp_20x_ksi__exception` | `name`, `description`, `status`, `source` + `source_key` (identity); proposed 2026-10-19: `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at`, `verify_within_hours` (`req-compliance-core-exception`) |
 | `compliance_core__compliance_boundary` | `fedramp_20x_ksi__boundary` | `name`, `description`, `source` + `source_key` (identity) |
 
 `compliance_artifact` and `compliance_context` keep their names (already
@@ -277,7 +322,7 @@ type. Four move directly with their generic endpoints; the fifth
 | edge (compliance_core) | from | endpoints |
 | --- | --- | --- |
 | `CITES_COMPLIANCE_EVIDENCE` | `HAS_EVIDENCE` | `compliance_finding` → `compliance_evidence` |
-| `COVERS_COMPLIANCE_FINDING` | `COVERS_FINDING` | `compliance_exception` → `compliance_finding` |
+| `COVERS_COMPLIANCE_FINDING` | `COVERS_FINDING` | `compliance_exception` → `compliance_finding`; proposed 2026-10-19: `compliance_exception_instance` → `compliance_finding` instead (`req-compliance-core-exception-edges`) |
 | `CARRIES_COMPLIANCE_FINDING` | `HAS_FINDING` | any asset (wildcard source) → `compliance_finding` |
 | `SCOPED_TO_COMPLIANCE_BOUNDARY` | `SCOPED_TO_BOUNDARY` | any component (wildcard source) → `compliance_boundary` |
 | `CONCERNS_COMPLIANCE_CONTROL` | `RELATED_INDICATOR` | `compliance_finding` → any control (wildcard target) |
@@ -617,6 +662,220 @@ Existing findings carry `null` until their producer next writes one. There is no
 | req-compliance-core-finding-detection-6 | A Replaced Value Stays In History | Implemented | After a producer moves or clears `first_detected_at`, every earlier value is still on record in the finding's history. | `::test_a_replaced_value_stays_in_the_findings_history`. The field is mutable by design; this is what makes a bad write recoverable. |
 | req-compliance-core-finding-detection-5 | Resend Duty | Implemented | A finding re-sent without the field goes back to `null`; the producer carries the earliest value forward. | `::test_a_resend_without_it_goes_back_to_unobserved`; pins platform behaviour, not enforced here. |
 
+### Exception Modeling
+----
+RID: `req-compliance-core-exception`
+
+Status: `Proposed`
+
+An exception is a decision that a class of finding is acceptable, and it is only as good as what the decision says and when it was last checked. Today `compliance_exception` carries a `name`, a `description` and a `status` (`active`, `expired`, `revoked`), and its docstring defers expiration, approver and review cadence. This requirement adds them, additively and nullable, so every producer that mints an exception today keeps working. **What an exception covers is not stored here**: it lives on the exception's instances (`req-compliance-core-exception-instance`), because a decision to accept log4j in one place must never read as acceptance of log4j everywhere.
+
+An exception is the rule; it can be one a person wrote down in a risk register, or one a plugin re-proves on a schedule (`req-compliance-core-exception-checker`). Its identity is unchanged: `source` is the producer's slug (the checker plugin, or the system of record) and `source_key` is that producer's rule id.
+
+| field | type | meaning |
+| --- | --- | --- |
+| `kind` | string, one of `false-positive`, `not-affected`, `mitigated`, `operational-requirement`, `accepted-risk`; null | What sort of decision this is. The first is a claim that the scanner is wrong, the second that the component is present but the vulnerability cannot be exploited as used, the third that something else already prevents it, and the last two that the risk is real and is being lived with. Null means not observed, and an exception with no kind covers nothing. |
+| `justification` | string, one of the five OpenVEX labels in kebab-case (`component-not-present`, `vulnerable-code-not-present`, `vulnerable-code-not-in-execute-path`, `vulnerable-code-cannot-be-controlled-by-adversary`, `inline-mitigations-already-exist`); null | Why a `not-affected` claim holds. Refused with any other `kind`. |
+| `approver` | string, at most 200 characters; null | The person or role that approved it. For an exception granted by a checker plugin, the reviewer who merged the checker. |
+| `granted_at` | datetime; null | When the decision was made. |
+| `review_by` | datetime; null | The date a person is asked to look at it again. A null `review_by` is reported, not read as never. |
+| `expires_at` | datetime; null | A hard ceiling after which the exception covers nothing whatever its checks say. Null means no ceiling. |
+| `verify_within_hours` | integer, at least 1; null | How old the last successful check of an instance may be before it stops counting. Null means never fresh: the exception covers nothing until it is set, so an unset value is the worst case and is visible (the same stance as the VDR factors). |
+
+`description` stays what it was by convention: the business justification and the rationale. `status` keeps its three values, but coverage never trusts a stored `active` alone; it computes expiry from `expires_at` (`req-compliance-core-exception-coverage`).
+
+#### Implementation
+
+- `ComplianceException` in `tap_plugin/compliance_core/models/compliance_exception.py` gains the seven columns, each nullable, in `FIELD_CRUD_SCHEMA` and `FIELD_VALIDATION_SCHEMA` with a description on every field. `justification` validates against the five labels and is refused unless `kind` is `not-affected`. `CREATE_REQUIRED` stays `["name"]`.
+- `CONTAINMENT_EDGES = ("GRANTS_COMPLIANCE_EXCEPTION_INSTANCE",)`, a permitted outbound edge of the model (`tap_grid/models.py` refuses a containment declaration naming an edge the model may not emit).
+- Migration `0006` adds the columns; it rewrites no row.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-exception-1 | New Fields Are Nullable | Proposed | An exception created with only a `name`, as every current producer does, is accepted and reads back with the seven new fields null. | Backward compatibility with `fedramp_20x_ksi`'s minted exceptions. |
+| req-compliance-core-exception-2 | Kind And Justification Are Closed | Proposed | A `kind` outside the five, a `justification` outside the five labels, and a `justification` on any `kind` but `not-affected` are refused. | Vocabulary drawn from GitHub's dismissal reasons, OpenVEX and the FedRAMP deviation types. |
+| req-compliance-core-exception-3 | Verify Window Is A Positive Integer | Proposed | `verify_within_hours` accepts an integer of at least 1 or null; zero, negatives and non-integers are refused. | |
+| req-compliance-core-exception-4 | Containment Declared | Proposed | `CONTAINMENT_EDGES` names `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` and that edge is a permitted outbound edge of the model. | The class-creation guard in `tap_grid/models.py`. |
+| req-compliance-core-exception-5 | Identity Unchanged | Proposed | The natural key stays `("source", "source_key")`; re-sending an exception under the same key is the same node. | `req-compliance-core-identity`. |
+| req-compliance-core-exception-6 | Additive Migration | Proposed | Migration `0006` adds the columns and changes no existing row. | |
+
+### Exception Instance Modeling
+----
+RID: `req-compliance-core-exception-instance`
+
+Status: `Proposed`
+
+`compliance_exception_instance` is one exception applied to one vulnerability within one declared scope, together with the result of the last attempt to show that application false. It is the grid's version of the record Kyverno writes into a policy report and Trivy prints for a suppressed finding: not the rule, but "this rule, here, last checked then, held". An exception has many instances and an instance has one exception.
+
+It is a node and not an edge property for three reasons the design settled on. It must be deleted with its exception (the grid already cascades through declared containment, and a pair of edges on two different nodes cannot be deleted together). It must outlive the finding it covers (a tombstone is terminal, so an edge to a finding dies with the finding, but the instance holds the scope and can bind the next finding). And it carries the check result, which belongs to neither endpoint.
+
+| field | type | meaning |
+| --- | --- | --- |
+| `name` | string, required | A label for reviewers. |
+| `source`, `source_key` | strings | Identity (`req-compliance-core-identity`). `source` is the producer's slug; `source_key` is deterministic from the parent exception's `source_key`, the vulnerability id and the anchors, so the same application is found again on every run. compliance_core never parses it. |
+| `outcome` | string, `held` or `falsified`; null | The result of the last check. Null means never checked, which is uncovered. |
+| `verified_at` | datetime; null | When that check ran. Null means never. |
+| `anchor_count` | integer, at least 1, required | How many scope anchors the producer declared for this instance (`req-compliance-core-exception-edges`). Coverage requires that many to be live. |
+| `detail` | string; null | What the check saw, in the checker's words. |
+
+The instance has no `status`. Its lifecycle is `outcome` plus retirement. Default dimension: `compliance: exception-instance`.
+
+#### Implementation
+
+- `ComplianceExceptionInstance` in `tap_plugin/compliance_core/models/compliance_exception_instance.py`, entity type `compliance_core__compliance_exception_instance`, `NATURAL_KEY = ("source", "source_key")`, `CREATE_REQUIRED = ["name", "anchor_count"]`, every field described.
+- Declared edges (`OUTBOUND_EDGES` / `INBOUND_EDGES`) as in `req-compliance-core-exception-edges`, so a wrong-way or wrong-type edge at an instance is refused.
+- A manifest entry, an icon, and migration `0006`.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-exception-instance-1 | The Node Exists With A Key And A Dimension | Proposed | The entity type is `compliance_core__compliance_exception_instance`, it keys on `("source", "source_key")`, and a new instance carries `compliance: exception-instance`. | |
+| req-compliance-core-exception-instance-2 | Outcome Has Three States | Proposed | `outcome` accepts `held`, `falsified` or null; any other string is refused; null reads back as null, never as an empty string. | Null is unobserved (the grid's null convention). |
+| req-compliance-core-exception-instance-3 | Anchor Count Is Required | Proposed | An instance created without `anchor_count`, or with a value below 1, is refused. | A scope of zero anchors would be a blanket approval. |
+| req-compliance-core-exception-instance-4 | Same Key Is The Same Node | Proposed | Re-sending an instance with the same `(source, source_key)` updates it; the producer re-sends every field it owns. | A GRIFT node under an existing key replaces the row and nulls omitted fields (Issue# 1071 - tap), so a partial re-send would erase `outcome`. |
+| req-compliance-core-exception-instance-5 | Wrong Ends Refused | Proposed | An edge at an instance in the wrong direction or to the wrong type is refused. | |
+| req-compliance-core-exception-instance-6 | Recording Check Time Without A New Version Each Run | Backlog | `verified_at` changes on every successful check. The grid treats re-observation as not a change, so the design needs either that rule to admit a check-time field or the freshness to be derived from the latest scan run that scanned the instance. | Open: Issue# 322 - tap and Issue# 323 - tap. v0 stores the field; the derived form is the alternative. |
+
+### Exception Edges
+----
+RID: `req-compliance-core-exception-edges`
+
+Status: `Proposed`
+
+Three new edges, one retargeted, one widened. Names are proposed and must pass `req-tap-plugin-edge-naming` (a verb and an object noun, no modal prefix, no trailing preposition).
+
+| edge (compliance_core) | endpoints | properties |
+| --- | --- | --- |
+| `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` | `compliance_exception` → `compliance_exception_instance` | none. The only containment edge of this set. |
+| `EXEMPTS_COMPLIANCE_VULNERABILITY` | `compliance_exception_instance` → `compliance_vulnerability` | none |
+| `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET` | `compliance_exception_instance` → any node (wildcard target) | none |
+| `COVERS_COMPLIANCE_FINDING` | `compliance_exception_instance` → `compliance_finding` (was `compliance_exception` → `compliance_finding`) | none |
+| `CITES_COMPLIANCE_EVIDENCE` | `compliance_finding` or `compliance_exception_instance` → `compliance_evidence` (sources widened) | none |
+| `SCANNED_COMPLIANCE_TARGET` (existing) | `compliance_scan_run` → `compliance_exception_instance` | `outcome` (existing) |
+
+**The scope rule, which is the point of the node.** An instance has exactly one vulnerability (`EXEMPTS_COMPLIANCE_VULNERABILITY`) and at least one scope anchor (`SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET`). A vulnerability alone is never a scope: there is no way to write "log4j, anywhere". The anchors are ANDed, which gives both ends of the range with no extra mechanism. *General*: one anchor, for example the package node `(ecosystem, name, version)`, which every image carrying that package shares. *Specific*: two or more anchors, for example that package and one image or SBOM document, so the exception holds for that package in that image and nowhere else. The producer declares how many anchors it meant in `anchor_count` and the coverage rule requires them all (`req-compliance-core-exception-coverage`).
+
+**The anchor target is a wildcard**, for the reason `RUNS_AT_LOCATION` and `CONCERNS_COMPLIANCE_CONTROL` have one: what a producer's world offers as a package, an image, a host or an SBOM document is not compliance_core's to name.
+
+**`COVERS_COMPLIANCE_FINDING` moves to the instance.** The instance, not the exception, is what is bound to a specific finding, and the binding is what a checker asserts or lets lapse. Live rows of the old shape (an exception as source) are retired by migration `0006`, as `0003` retired two renamed edges; ids derive from the slug so the next collection re-emits what is still true. Consumers that read the old shape retarget in their own repositories: `fedramp_20x_ksi`'s finding-profile spec describes an exception banner that reads this edge from an exception (`specs/spec-fedramp-20x-ksi-finding-profile.md`, the exception coverage panel line) and its instance-findings spec says the open-findings counter reads it. Code readers were not searched.
+
+**Edges carry no cardinality**, so "one vulnerability, at least one anchor" cannot be refused at write. A producer keeps to it, and coverage treats an instance that breaks it as covering nothing.
+
+**Dimensions.** The edges follow the target's type marker as the existing ones do: `exception-instance`, `vulnerability`, `exception-instance` (the wildcard takes its source's family), `finding`. Every edge declares the plain identity `{"discriminators": []}`.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-exception-edges-1 | The Sentences Connect | Proposed | Each edge in the table connects its endpoints and carries the dimension above. | |
+| req-compliance-core-exception-edges-2 | Containment Is Only The Grant | Proposed | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` is the only edge in `CONTAINMENT_EDGES`; deleting an exception with `cascade="contained"` retires its instances, and deleting an instance leaves the exception, finding, vulnerability and anchors live. | `req-grid-service-delete-cascade`. |
+| req-compliance-core-exception-edges-3 | An Anchor May Be Any Node | Proposed | `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET` accepts any node as its target from an instance, and refuses any other source. | |
+| req-compliance-core-exception-edges-4 | Covers Moves To The Instance | Proposed | `COVERS_COMPLIANCE_FINDING` accepts an instance as its source and refuses an exception; `CITES_COMPLIANCE_EVIDENCE` accepts an instance or a finding as its source. | |
+| req-compliance-core-exception-edges-5 | Old Covers Rows Retired | Proposed | Migration `0006` retires live `COVERS_COMPLIANCE_FINDING` rows whose source is an exception and touches no other row. | Precedent: migration `0003`. |
+| req-compliance-core-exception-edges-6 | Plain Identity | Proposed | Every new edge declares `{"discriminators": []}` and a re-sent edge is the same edge. | |
+| req-compliance-core-exception-edges-7 | Anchors Reach The Finding | Backlog | A check that each anchor actually reaches the covered finding along carries or path edges, as the reach runners follow them. | v0 relies on the checker's binding and on the vulnerability match; the topology of who carries a finding is set by the producers, so the path declarations need a design of their own. |
+
+### Exception Coverage
+----
+RID: `req-compliance-core-exception-coverage`
+
+Status: `Proposed`
+
+Whether a finding is covered is a question the grid answers when asked, from facts, and never a flag written onto the finding or the exception. Storing it would need undoing in every path that can end it (DefectDojo reverses `active` and `risk_accepted` in four code paths and has to decide whether the clock restarts); computing it ends coverage by the absence of a fact and needs nothing undone.
+
+An instance covers a finding only when **every** one of these holds, tested against `as_of` (default: now):
+
+1. A live `COVERS_COMPLIANCE_FINDING` edge runs from the instance to the finding.
+2. The finding's `status` is `open`.
+3. The finding concerns the one vulnerability the instance exempts.
+4. The instance's `outcome` is `held`.
+5. `verified_at` is not null and is no older than the exception's `verify_within_hours`, which must itself be set.
+6. The exception that grants the instance is live, has a `kind`, has `status` `active`, and has no `expires_at` or one after `as_of`.
+7. The instance has at least `anchor_count` live scope anchors, so a retired image can never widen a specific scope into a general one.
+8. Nothing on the path is tombstoned.
+
+Null or stale anywhere in that list means uncovered. This is the grid's null convention applied the way the VDR rulings apply it: an unset factor is the worst case and the value is visible.
+
+#### Implementation
+
+- Two `module` Search runners, registered from the manifest like `findings-reached-count`, built with the ORM and the standard-library `datetime`, not Gryphon date arithmetic (Issue# 1064 - tap is not required), reading under the read rules Gryphon applies.
+- `finding-exception-coverage`: inputs `entity_id` (optional, one finding), `as_of` (optional ISO datetime), `max_results` (1 to 5000, default 1000). One row per open finding with at least one `COVERS_COMPLIANCE_FINDING` edge from an instance: `entity_id` (the finding), `covered` (boolean), `instance_id`, `exception_id`, `reason`. A finding with several instances is covered if any covers; `reason` is `covered`, or the number and name of the first failing condition above for the instance that passes the most. Ties break on instance id.
+- `exceptions-due-review`: inputs `as_of`, `max_results`. One row per exception with at least one of the reasons `review-overdue`, `no-review-date`, `expired`, `no-verify-window`: `entity_id` (the exception), `name`, `reasons` (list), `instance_count`.
+- Neither runner writes.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-exception-coverage-1 | Registered From The Manifest | Proposed | Both runners are declared in `[searches]` and registered at plugin load, and their results pass through the search service with the schema defaults applied. | As `req-compliance-core-reach-1`. |
+| req-compliance-core-exception-coverage-2 | All Eight Conditions Are Required | Proposed | A finding with an instance satisfying all eight reads `covered` true; making any one fail, one at a time, reads false with that condition in `reason`. | One test per condition. |
+| req-compliance-core-exception-coverage-3 | Unset Is Uncovered | Proposed | A null `outcome`, null `verified_at`, null `verify_within_hours`, null `kind` and an instance with no vulnerability or no anchor each read uncovered. | |
+| req-compliance-core-exception-coverage-4 | Stale Is Uncovered | Proposed | An instance verified longer ago than `verify_within_hours` before `as_of` reads uncovered, and one verified inside the window reads covered. | |
+| req-compliance-core-exception-coverage-5 | Expiry Is Computed | Proposed | An exception whose stored `status` is `active` but whose `expires_at` is before `as_of` covers nothing. | |
+| req-compliance-core-exception-coverage-6 | A Lost Anchor Never Widens The Scope | Proposed | Retiring one of two anchors makes the instance uncovered; it does not become the general case. | |
+| req-compliance-core-exception-coverage-7 | Any Covering Instance Is Enough | Proposed | A finding with one failing and one covering instance reads covered; with two failing instances it reads uncovered with the reason of the closer. | |
+| req-compliance-core-exception-coverage-8 | Review Due | Proposed | `exceptions-due-review` lists an exception past `review_by`, one with no `review_by`, one past `expires_at` and one with no `verify_within_hours`, and omits one with none of these. | |
+| req-compliance-core-exception-coverage-9 | Read Scope And Input Validation | Proposed | A tombstoned instance, exception, finding or edge contributes nothing; a malformed `as_of`, a non-string `entity_id` or an out-of-range `max_results` is refused with a `ValueError` naming the input. | As `req-compliance-core-reach-5` and `-9`. |
+
+### Exception Lifecycle
+----
+RID: `req-compliance-core-exception-lifecycle`
+
+Status: `Proposed`
+
+Four things can end or change coverage, each with one defined effect.
+
+**Withdrawal.** Deleting an exception with `cascade="contained"` retires its instances in one transaction and, through the grid's endpoint cascade, every edge touching them. The findings, vulnerabilities, anchors, evidence and scan runs are references, not contained, and stay live. The delete carries a reason from the closed vocabulary of `req-grid-service-delete-reason`: a checker that stops asserting a rule uses `scope_withdrawn`, and `operator` is used only when a human acted, never as a default. The cascade is partial in the grid (preflight and `cascade_force` are Backlog there); this requirement relies on neither.
+
+**Falsification.** A check that fails updates the instance to `outcome` `falsified` with a fresh `verified_at` and a `detail`. The instance is kept, the `COVERS_COMPLIANCE_FINDING` edge is kept, and coverage drops through condition 4. The history of the instance records that it once held. A later check that holds updates the same instance back to `held`.
+
+**A finding that returns.** A tombstone is terminal: the grid has no restore verb, and a finding that becomes observable again is a new observation under the same natural key (`req-grid-reconcile-observation-lifetime`). The edge from the instance to the old finding ended with it. The instance is not retired by that. The checker's next run binds the instance to the new finding by writing a fresh `COVERS_COMPLIANCE_FINDING`, and until it does the new finding is uncovered. The failure direction is always toward uncovered.
+
+**An anchor that goes.** An anchor retired leaves fewer live anchors than `anchor_count`; the instance covers nothing until a producer either restores the scope or declares the narrower scope it now means.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-exception-lifecycle-1 | Withdrawal Cascades | Proposed | Deleting an exception with `cascade="contained"` tombstones its instances and the edges touching them, with the reason carried, and leaves every other node live. | |
+| req-compliance-core-exception-lifecycle-2 | Falsification Keeps The Instance | Proposed | A falsified check leaves the instance and its covers edge live with `outcome` `falsified`; coverage reads uncovered; history shows the earlier `held`. | |
+| req-compliance-core-exception-lifecycle-3 | A Returning Finding Is Uncovered Until Re-bound | Proposed | After the covered finding is tombstoned and a new one is minted under the same natural key, the new finding reads uncovered until the instance gains a covers edge to it; the instance itself is unchanged. | |
+| req-compliance-core-exception-lifecycle-4 | Orphan Instance Covers Nothing | Proposed | An instance whose exception is tombstoned or has no live grant edge covers nothing. | |
+| req-compliance-core-exception-lifecycle-5 | Cascade Preflight | Backlog | A read-only plan of what withdrawing an exception would retire, before applying. | The grid's `req-grid-service-delete-cascade-plan`. |
+
+### Exception Checker Contract
+----
+RID: `req-compliance-core-exception-checker`
+
+Status: `Proposed`
+
+compliance_core ships no checker, only the vocabulary one writes. A **checker** is a plugin, in its own repository, that on a schedule selects candidate findings with a Search, tries to show a stated condition false for each, and records the result. It is the same shape as a scanner that reads the grid (as grype-tap and zizmor-tap are), and it is how an exception becomes code that can be exercised repeatedly against the system it vouches for. The schedule replaces a fixed duration of acceptance; `review_by` remains the date a person is asked to look again.
+
+What a checker owes the grid:
+
+- **Identity.** `source` is its slug. The exception's `source_key` is its rule id; each instance's is deterministic from the rule id, the vulnerability and the anchors.
+- **A scanner and a run.** It registers as a `compliance_scanner`; each execution is a `compliance_scan_run` that writes `SCANNED_COMPLIANCE_TARGET` to each instance it examined with an `outcome` in its own words (`scanned`, `failed`, `not-scanned`). A target a run could not examine must not read as one it checked and cleared.
+- **The result.** Each run sets `outcome` and `verified_at` on every instance it owns, held or falsified, and re-sends every field it owns (Issue# 1071 - tap).
+- **A falsifiable condition.** The condition names what would make it false and what it observed (`detail`, and a `CITES_COMPLIANCE_EVIDENCE` edge to the observation). A condition that cannot fail is not a check.
+- **The parent's fields.** It sets `kind`, `approver`, `granted_at`, `review_by` and `verify_within_hours`, and sets `verify_within_hours` no shorter than its own schedule, since a window shorter than the interval between runs makes the exception lapse by design.
+- **Scope kept to what it declared.** It binds `COVERS_COMPLIANCE_FINDING` only to findings that concern the instance's vulnerability and sit within its anchors. compliance_core does not verify the anchors (`req-compliance-core-exception-edges-7`).
+- **Approval is the merge.** The checker's code review, and its pin in a boot record, are the approval of the decision it encodes; `approver` names the reviewer. This is a process stated here as the design, not something compliance_core enforces.
+
+*Illustrative, not a requirement.* A scanner reported log4j-core 2.14.1 in an image whose SBOM lists no such component. A checker for that disagreement has the condition "the image's SBOM revision contains no component with this package URL", anchors the instance to the package and the SBOM document, uses `kind` `false-positive`, and cites the SBOM digest as evidence. If a later image does contain the component, the condition fails, the instance reads `falsified`, and the finding is uncovered. (The better fix for that particular case is upstream: do not ship the test fixture. An exception is for what remains true after the fix at the source has been considered.)
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-exception-checker-1 | No Checker Ships Here | Proposed | compliance_core contains no collector, scheduler entry or checker. | Consistent with `req-compliance-core-nongoals`. |
+| req-compliance-core-exception-checker-2 | The Vocabulary Suffices | Proposed | A checker can be written using only the nodes and edges of this spec and the existing scanner, scan-run and evidence vocabulary; no wildcard or new edge is needed beyond `req-compliance-core-exception-edges`. | Demonstrated by a test plugin or a fixture in the first checker's repository. |
+| req-compliance-core-exception-checker-3 | A Run Records What It Could Not Examine | Proposed | A checker whose run could not examine an instance writes `SCANNED_COMPLIANCE_TARGET` with a non-`scanned` outcome and does not refresh `verified_at`. | |
+| req-compliance-core-exception-checker-4 | Window Not Shorter Than Schedule | Proposed | A checker never sets `verify_within_hours` below its own run interval. | Producer's rule; compliance_core cannot see the schedule. |
+| req-compliance-core-exception-checker-5 | Approval Is Recorded | Proposed | `approver` is set on every exception a checker grants. | Producer's rule. |
+
 ### Naming Discipline
 ----
 RID: `req-compliance-core-naming`
@@ -714,3 +973,10 @@ Status: `Implemented`
 - **Generic `compliance_component`** — deferred; `ksi_component` remains KSI-bound in v0.
 - **No collector, no regime logic, no assessment engine.** compliance_core is
   vocabulary only; regimes and deployments own the wiring.
+- **Exception checkers, severity ceilings, deviation-type mapping, approval workflow and pages**
+  (proposed 2026-10-19) — the checker plugins live in their own repositories
+  (`req-compliance-core-exception-checker`); a regime's limits on which `kind` may cover which severity
+  (FedRAMP does not approve an operational requirement for a High) belong to that regime's plugin; the
+  mapping of `kind` to a regime's deviation types likewise; an exceptions page is a later `add-page`.
+  Scanner-side exclusions (a path never scanned, a file never shipped in an image) are not exceptions:
+  they act before a finding exists and belong to the scanner's configuration or the build.
