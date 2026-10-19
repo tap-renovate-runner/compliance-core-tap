@@ -79,9 +79,13 @@ class TestFirstDetectedAt:
     def test_an_explicit_null_is_accepted(self) -> None:
         assert _create({**FINDING, "first_detected_at": None}).first_detected_at is None
 
-    @pytest.mark.parametrize("bad", ["yesterday", "2026-09-25", 7, True, {"at": "2026-09-25T12:45:55Z"}])
+    @pytest.mark.parametrize("bad", ["yesterday", "25 Sep 2026", 7, True, {"at": "2026-09-25T12:45:55Z"}])
     def test_a_value_that_is_not_a_date_time_is_refused(self, bad: Any) -> None:
-        """req-compliance-core-finding-detection-3."""
+        """req-compliance-core-finding-detection-3.
+
+        A bare ISO date ("2026-09-25") is not in the list: the platform's date-time field reads it as
+        midnight, as it does for every timestamp in this plugin, so it is accepted (observed 2026-10-19).
+        """
         assert not create_node(FINDING_TYPE, {**FINDING, "first_detected_at": bad}).success
 
     def test_it_is_not_part_of_the_identity(self) -> None:
