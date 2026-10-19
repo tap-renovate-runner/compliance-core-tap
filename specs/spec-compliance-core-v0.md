@@ -688,7 +688,7 @@ An exception is the rule; it can be one a person wrote down in a risk register, 
 
 - `ComplianceException` in `tap_plugin/compliance_core/models/compliance_exception.py` gains the seven columns, each nullable, in `FIELD_CRUD_SCHEMA` and `FIELD_VALIDATION_SCHEMA` with a description on every field. `justification` validates against the five labels and is refused unless `kind` is `not-affected`. `CREATE_REQUIRED` stays `["name"]`.
 - `CONTAINMENT_EDGES = ("GRANTS_COMPLIANCE_EXCEPTION_INSTANCE",)`, a permitted outbound edge of the model (`tap_grid/models.py` refuses a containment declaration naming an edge the model may not emit).
-- Migration `0006` adds the columns; it rewrites no row.
+- A schema migration, numbered when built (main's latest is `0007`), adds the columns; it rewrites no row.
 
 #### Acceptance Criteria
 
@@ -699,7 +699,7 @@ An exception is the rule; it can be one a person wrote down in a risk register, 
 | req-compliance-core-exception-3 | Verify Window Is A Positive Integer | Proposed | `verify_within_hours` accepts an integer of at least 1 or null; zero, negatives and non-integers are refused. | |
 | req-compliance-core-exception-4 | Containment Declared | Proposed | `CONTAINMENT_EDGES` names `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` and that edge is a permitted outbound edge of the model. | The class-creation guard in `tap_grid/models.py`. |
 | req-compliance-core-exception-5 | Identity Unchanged | Proposed | The natural key stays `("source", "source_key")`; re-sending an exception under the same key is the same node. | `req-compliance-core-identity`. |
-| req-compliance-core-exception-6 | Additive Migration | Proposed | Migration `0006` adds the columns and changes no existing row. | |
+| req-compliance-core-exception-6 | Additive Migration | Proposed | The schema migration adds the columns and changes no existing row. | |
 
 ### Exception Instance Modeling
 ----
@@ -726,7 +726,7 @@ The instance has no `status`. Its lifecycle is `outcome` plus retirement. Defaul
 
 - `ComplianceExceptionInstance` in `tap_plugin/compliance_core/models/compliance_exception_instance.py`, entity type `compliance_core__compliance_exception_instance`, `NATURAL_KEY = ("source", "source_key")`, `CREATE_REQUIRED = ["name", "anchor_count"]`, every field described.
 - Declared edges (`OUTBOUND_EDGES` / `INBOUND_EDGES`) as in `req-compliance-core-exception-edges`, so a wrong-way or wrong-type edge at an instance is refused.
-- A manifest entry, an icon, and migration `0006`.
+- A manifest entry, an icon, and a schema migration.
 
 #### Acceptance Criteria
 
@@ -760,7 +760,7 @@ Three new edges, one retargeted, one widened. Names are proposed and must pass `
 
 **The anchor target is a wildcard**, for the reason `RUNS_AT_LOCATION` and `CONCERNS_COMPLIANCE_CONTROL` have one: what a producer's world offers as a package, an image, a host or an SBOM document is not compliance_core's to name.
 
-**`COVERS_COMPLIANCE_FINDING` moves to the instance.** The instance, not the exception, is what is bound to a specific finding, and the binding is what a checker asserts or lets lapse. Live rows of the old shape (an exception as source) are retired by migration `0006`, as `0003` retired two renamed edges; ids derive from the slug so the next collection re-emits what is still true. Consumers that read the old shape retarget in their own repositories: `fedramp_20x_ksi`'s finding-profile spec describes an exception banner that reads this edge from an exception (`specs/spec-fedramp-20x-ksi-finding-profile.md`, the exception coverage panel line) and its instance-findings spec says the open-findings counter reads it. Code readers were not searched.
+**`COVERS_COMPLIANCE_FINDING` moves to the instance.** The instance, not the exception, is what is bound to a specific finding, and the binding is what a checker asserts or lets lapse. Live rows of the old shape (an exception as source) are retired by a data migration, kept apart from the schema migration, as `0003` retired two renamed edges; ids derive from the slug so the next collection re-emits what is still true. Consumers that read the old shape retarget in their own repositories: `fedramp_20x_ksi`'s finding-profile spec describes an exception banner that reads this edge from an exception (`specs/spec-fedramp-20x-ksi-finding-profile.md`, the exception coverage panel line) and its instance-findings spec says the open-findings counter reads it. Code readers were not searched.
 
 **Edges carry no cardinality**, so "one vulnerability, at least one anchor" cannot be refused at write. A producer keeps to it, and coverage treats an instance that breaks it as covering nothing.
 
@@ -774,7 +774,7 @@ Three new edges, one retargeted, one widened. Names are proposed and must pass `
 | req-compliance-core-exception-edges-2 | Containment Is Only The Grant | Proposed | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` is the only edge in `CONTAINMENT_EDGES`; deleting an exception with `cascade="contained"` retires its instances, and deleting an instance leaves the exception, finding, vulnerability and anchors live. | `req-grid-service-delete-cascade`. |
 | req-compliance-core-exception-edges-3 | An Anchor May Be Any Node | Proposed | `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET` accepts any node as its target from an instance, and refuses any other source. | |
 | req-compliance-core-exception-edges-4 | Covers Moves To The Instance | Proposed | `COVERS_COMPLIANCE_FINDING` accepts an instance as its source and refuses an exception; `CITES_COMPLIANCE_EVIDENCE` accepts an instance or a finding as its source. | |
-| req-compliance-core-exception-edges-5 | Old Covers Rows Retired | Proposed | Migration `0006` retires live `COVERS_COMPLIANCE_FINDING` rows whose source is an exception and touches no other row. | Precedent: migration `0003`. |
+| req-compliance-core-exception-edges-5 | Old Covers Rows Retired | Proposed | A data migration, separate from the schema migration, retires live `COVERS_COMPLIANCE_FINDING` rows whose source is an exception and touches no other row. | Precedent: migration `0003`. |
 | req-compliance-core-exception-edges-6 | Plain Identity | Proposed | Every new edge declares `{"discriminators": []}` and a re-sent edge is the same edge. | |
 | req-compliance-core-exception-edges-7 | Anchors Reach The Finding | Backlog | A check that each anchor actually reaches the covered finding along carries or path edges, as the reach runners follow them. | v0 relies on the checker's binding and on the vulnerability match; the topology of who carries a finding is set by the producers, so the path declarations need a design of their own. |
 
