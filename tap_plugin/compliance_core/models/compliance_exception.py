@@ -23,10 +23,25 @@ _JUSTIFICATION_VALUES = [
     "inline-mitigations-already-exist",
 ]
 #: An instant, so a value must carry a time part (a bare date would read as midnight).
-_INSTANT_SCHEMA: dict[str, Any] = {
+INSTANT_SCHEMA: dict[str, Any] = {
     "type": ["string", "null"],
     "format": "date-time",
     "pattern": r"^\d{4}-\d{2}-\d{2}T",
+}
+
+_FIELD_SCHEMAS: dict[str, Any] = {
+    "source": {"type": "string", "maxLength": 64},
+    "source_key": {"type": "string", "maxLength": 512},
+    "name": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "status": {"type": "string", "enum": ["active", "expired", "revoked"]},
+    "kind": {"type": ["string", "null"], "enum": [*_KIND_VALUES, None]},
+    "justification": {"type": ["string", "null"], "enum": [*_JUSTIFICATION_VALUES, None]},
+    "approver": {"type": ["string", "null"], "maxLength": 200},
+    "granted_at": INSTANT_SCHEMA,
+    "review_by": INSTANT_SCHEMA,
+    "expires_at": INSTANT_SCHEMA,
+    "verify_within_hours": {"type": ["integer", "null"], "minimum": 1},
 }
 
 
@@ -84,46 +99,9 @@ class ComplianceException(BaseModel):
     ]
     CONTAINMENT_EDGES: ClassVar[tuple[str, ...]] = ("GRANTS_COMPLIANCE_EXCEPTION_INSTANCE__compliance_core",)
 
-    FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = {
-        "source": {"type": "string", "maxLength": 64},
-        "source_key": {"type": "string", "maxLength": 512},
-        "name": {"type": "string", "minLength": 1},
-        "description": {"type": "string"},
-        "status": {"type": "string", "enum": _STATUS_VALUES},
-        "kind": {"type": ["string", "null"], "enum": [*_KIND_VALUES, None]},
-        "justification": {"type": ["string", "null"], "enum": [*_JUSTIFICATION_VALUES, None]},
-        "approver": {"type": ["string", "null"], "maxLength": 200},
-        "granted_at": _INSTANT_SCHEMA,
-        "review_by": _INSTANT_SCHEMA,
-        "expires_at": _INSTANT_SCHEMA,
-        "verify_within_hours": {"type": ["integer", "null"], "minimum": 1},
-    }
-
+    FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = _FIELD_SCHEMAS
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
-        "source": {"validation": "jsonschema", "schema": {"type": "string", "maxLength": 64}},
-        "source_key": {"validation": "jsonschema", "schema": {"type": "string", "maxLength": 512}},
-        "name": {
-            "validation": "jsonschema",
-            "schema": {"type": "string", "minLength": 1},
-        },
-        "description": {"validation": "jsonschema", "schema": {"type": "string"}},
-        "status": {
-            "validation": "jsonschema",
-            "schema": {"type": "string", "enum": _STATUS_VALUES},
-        },
-        "kind": {"validation": "jsonschema", "schema": {"type": ["string", "null"], "enum": [*_KIND_VALUES, None]}},
-        "justification": {
-            "validation": "jsonschema",
-            "schema": {"type": ["string", "null"], "enum": [*_JUSTIFICATION_VALUES, None]},
-        },
-        "approver": {"validation": "jsonschema", "schema": {"type": ["string", "null"], "maxLength": 200}},
-        "granted_at": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
-        "review_by": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
-        "expires_at": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
-        "verify_within_hours": {
-            "validation": "jsonschema",
-            "schema": {"type": ["integer", "null"], "minimum": 1},
-        },
+        name: {"validation": "jsonschema", "schema": schema} for name, schema in _FIELD_SCHEMAS.items()
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["name"]
 

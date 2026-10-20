@@ -14,7 +14,7 @@ import tap_plugin.compliance_core.models as compliance  # noqa: F401 - trigger m
 
 from tap_grid.models import Entity
 from tap_grid.registry import get_model_class
-from tap_grid.services import create_edge, create_node, delete_node
+from tap_grid.services import create_edge, create_node, delete_node, replace_node
 
 CC = "compliance_core__compliance_"
 EXCEPTION = f"{CC}exception"
@@ -93,6 +93,14 @@ class TestExceptionFields:
     def test_a_justification_with_any_other_kind_is_refused(self, kind: str | None) -> None:
         """req-compliance-core-exception-2: the whole-record rule, not a per-field one."""
         assert not _ok(EXCEPTION, {"name": "x", "kind": kind, "justification": "component-not-present"})
+
+    def test_the_justification_rule_also_holds_on_replace(self) -> None:
+        """req-compliance-core-exception-2: the whole-record hook is on the replace path, not only create."""
+        entity = _node(EXCEPTION, {"name": "x", "kind": "mitigated"})
+        refused = replace_node(entity.pk, {"name": "x", "kind": "mitigated", "justification": "component-not-present"})
+        assert not refused.success
+        accepted = replace_node(entity.pk, {"name": "x", "kind": "not-affected", "justification": "component-not-present"})
+        assert accepted.success, accepted.errors
 
     @pytest.mark.parametrize("bad", [0, -1, 1.5, "24", True])
     def test_verify_window_must_be_a_positive_integer(self, bad: Any) -> None:

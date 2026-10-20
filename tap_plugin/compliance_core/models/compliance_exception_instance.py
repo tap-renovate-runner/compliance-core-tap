@@ -3,14 +3,20 @@
 from typing import Any, ClassVar
 
 from django.db import models
+from tap_plugin.compliance_core.models.compliance_exception import INSTANT_SCHEMA
 
 from tap_grid.models import BaseModel
 
 _OUTCOME_VALUES = ["held", "falsified"]
-_INSTANT_SCHEMA: dict[str, Any] = {
-    "type": ["string", "null"],
-    "format": "date-time",
-    "pattern": r"^\d{4}-\d{2}-\d{2}T",
+
+_FIELD_SCHEMAS: dict[str, Any] = {
+    "source": {"type": "string", "maxLength": 64},
+    "source_key": {"type": "string", "maxLength": 512},
+    "name": {"type": "string", "minLength": 1},
+    "outcome": {"type": ["string", "null"], "enum": [*_OUTCOME_VALUES, None]},
+    "verified_at": INSTANT_SCHEMA,
+    "anchor_count": {"type": "integer", "minimum": 1},
+    "detail": {"type": ["string", "null"]},
 }
 
 
@@ -69,27 +75,9 @@ class ComplianceExceptionInstance(BaseModel):
         },
     ]
 
-    FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = {
-        "source": {"type": "string", "maxLength": 64},
-        "source_key": {"type": "string", "maxLength": 512},
-        "name": {"type": "string", "minLength": 1},
-        "outcome": {"type": ["string", "null"], "enum": [*_OUTCOME_VALUES, None]},
-        "verified_at": _INSTANT_SCHEMA,
-        "anchor_count": {"type": "integer", "minimum": 1},
-        "detail": {"type": ["string", "null"]},
-    }
-
+    FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = _FIELD_SCHEMAS
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
-        "source": {"validation": "jsonschema", "schema": {"type": "string", "maxLength": 64}},
-        "source_key": {"validation": "jsonschema", "schema": {"type": "string", "maxLength": 512}},
-        "name": {"validation": "jsonschema", "schema": {"type": "string", "minLength": 1}},
-        "outcome": {
-            "validation": "jsonschema",
-            "schema": {"type": ["string", "null"], "enum": [*_OUTCOME_VALUES, None]},
-        },
-        "verified_at": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
-        "anchor_count": {"validation": "jsonschema", "schema": {"type": "integer", "minimum": 1}},
-        "detail": {"validation": "jsonschema", "schema": {"type": ["string", "null"]}},
+        name: {"validation": "jsonschema", "schema": schema} for name, schema in _FIELD_SCHEMAS.items()
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["name", "anchor_count"]
 
