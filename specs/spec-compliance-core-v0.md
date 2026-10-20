@@ -192,8 +192,8 @@ layer.
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
 | req-compliance-core-migration | [Extraction & Migration](#extraction--migration) | Implemented | Rename `fedramp_20x_ksi__*` → `compliance_core__compliance_*`; ids regenerate (collected, not seeded); phased first slice; pre-eviction. |
 | req-compliance-core-nongoals | [v0 Non-Goals](#v0-non-goals) | Implemented | `ksi_*` and `vdr_*` stay in fedramp; no collector; no regime logic; generic `component` deferred. |
-| req-compliance-core-search-snapshot | [Search Snapshot Modeling](#search-snapshot-modeling) | Proposed | `compliance_search_snapshot`: one run of one Search, with its result rows held inside the node, keyed by the Search and the run time, and an edge to the Search it ran. |
-| req-compliance-core-search-snapshot-collector | [Search Snapshot Collector Base](#search-snapshot-collector-base) | Proposed | `SearchSnapshotCollector`: an abstract collector that runs the Searches a subclass names and writes one snapshot per Search per run. compliance_core registers none. |
+| req-compliance-core-search-snapshot | [Search Snapshot Modeling](#search-snapshot-modeling) | Implemented | `compliance_search_snapshot`: one run of one Search, with its result rows held inside the node, keyed by the Search and the run time, and an edge to the Search it ran. |
+| req-compliance-core-search-snapshot-collector | [Search Snapshot Collector Base](#search-snapshot-collector-base) | Implemented | `SearchSnapshotCollector`: an abstract collector that runs the Searches a subclass names and writes one snapshot per Search per run. compliance_core registers none. |
 
 ### Plugin Scope
 ----
@@ -1011,7 +1011,7 @@ What a checker owes the grid:
 ----
 RID: `req-compliance-core-search-snapshot`
 
-Status: `Proposed`
+Status: `Implemented`
 
 Coverage and compliance questions ("how much of the inventory is classified?") have an answer today and a different answer next week, and the trend is the evidence. The grid's history records a node's changes only, and a re-observation of an unchanged value is not a change (tap#322), so a figure that sat still for a week would leave no entries to read it back from, and an edge cannot point at a history row. A snapshot is therefore a node: a run of one Search, with the rows it returned held inside, written once and never updated. (Ruled by George 2026-10-20: results inside the node; the node and its edge are named `compliance_search_snapshot` and `CAPTURES_SEARCH`.)
 
@@ -1055,15 +1055,15 @@ Snapshots grow without bound at one per Search per run. Retention is deliberatel
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-search-snapshot-1 | Node Declared | Proposed | `compliance_core__compliance_search_snapshot` is a registered `BaseModel` with the fields above, a `FIELD_CRUD_SCHEMA` and a `FIELD_VALIDATION_SCHEMA` for each. | |
-| req-compliance-core-search-snapshot-2 | Identity | Proposed | `NATURAL_KEY` is `("source", "snapshot_key")`; two snapshots of one Search at different times coexist and a repeated key is the same node. | |
-| req-compliance-core-search-snapshot-3 | Required Fields | Proposed | `source`, `snapshot_key`, `observed_at`, `row_count`, `rows`, `truncated` and `inputs_text` are required; a null `observed_at` is refused. | |
-| req-compliance-core-search-snapshot-4 | Rows Are Scalar Objects | Proposed | `rows` accepts at most 1000 items, each an object of at most 50 properties with names of at most 128 characters, whose values are strings of at most 4096 characters, numbers, booleans or null; a list or object value, a longer string, a 51st property, a longer name or a 1001st item, is refused. | Row count, property count and name and value length together bound a node to tens of megabytes at the limits (review of this PR). |
-| req-compliance-core-search-snapshot-5 | Truncation Agrees With Counts | Proposed | A node with `truncated` false and `len(rows)` unequal to `row_count`, or with `truncated` true and `len(rows)` not less than `row_count`, is refused by `validate()`. | |
-| req-compliance-core-search-snapshot-6 | Edge Declared | Proposed | `CAPTURES_SEARCH__compliance_core` exists from `compliance_search_snapshot` to `search`, with no properties and the `compliance: search-snapshot` dimension, and a snapshot can be linked to a Search node with it. | The test links a real `search` node, because the core `search` type declares no inbound edges of its own. |
-| req-compliance-core-search-snapshot-7 | Edge Passes Naming | Proposed | `validate_plugin` accepts the slug under `req-tap-plugin-edge-naming`. | |
-| req-compliance-core-search-snapshot-8 | Never Updated Here | Proposed | compliance_core contains no code that patches or replaces an existing snapshot. | |
-| req-compliance-core-search-snapshot-9 | Migration Numbered When Built | Proposed | The schema migration takes the next free number at build time; this spec fixes none. | The exceptions spec hard-coded `0006` and was wrong by the time it merged. |
+| req-compliance-core-search-snapshot-1 | Node Declared | Implemented | `compliance_core__compliance_search_snapshot` is a registered `BaseModel` with the fields above, a `FIELD_CRUD_SCHEMA` and a `FIELD_VALIDATION_SCHEMA` for each. | |
+| req-compliance-core-search-snapshot-2 | Identity | Implemented | `NATURAL_KEY` is `("source", "snapshot_key")`; two snapshots of one Search at different times coexist and a repeated key is the same node. | |
+| req-compliance-core-search-snapshot-3 | Required Fields | Implemented | `source`, `snapshot_key`, `observed_at`, `row_count`, `rows`, `truncated` and `inputs_text` are required; a null `observed_at` is refused. | |
+| req-compliance-core-search-snapshot-4 | Rows Are Scalar Objects | Implemented | `rows` accepts at most 1000 items, each an object of at most 50 properties with names of at most 128 characters, whose values are strings of at most 4096 characters, numbers, booleans or null; a list or object value, a longer string, a 51st property, a longer name or a 1001st item, is refused. | Row count, property count and name and value length together bound a node to tens of megabytes at the limits (review of this PR). |
+| req-compliance-core-search-snapshot-5 | Truncation Agrees With Counts | Implemented | A node with `truncated` false and `len(rows)` unequal to `row_count`, or with `truncated` true and `len(rows)` not less than `row_count`, is refused by `validate()`. | |
+| req-compliance-core-search-snapshot-6 | Edge Declared | Implemented | `CAPTURES_SEARCH__compliance_core` exists from `compliance_search_snapshot` to `search`, with no properties and the `compliance: search-snapshot` dimension, and a snapshot can be linked to a Search node with it. | The test links a real `search` node, because the core `search` type declares no inbound edges of its own. |
+| req-compliance-core-search-snapshot-7 | Edge Passes Naming | Implemented | `validate_plugin` accepts the slug under `req-tap-plugin-edge-naming`. | |
+| req-compliance-core-search-snapshot-8 | Never Updated Here | Implemented | compliance_core contains no code that patches or replaces an existing snapshot. | |
+| req-compliance-core-search-snapshot-9 | Migration Numbered When Built | Implemented | The schema migration takes the next free number at build time; this spec fixes none. | The exceptions spec hard-coded `0006` and was wrong by the time it merged. |
 
 #### Future
 
@@ -1074,7 +1074,7 @@ A read restriction carried from the Search onto its snapshots, or a check that a
 ----
 RID: `req-compliance-core-search-snapshot-collector`
 
-Status: `Proposed`
+Status: `Implemented`
 
 An abstract collector class, `SearchSnapshotCollector`, in `tap_plugin/compliance_core/collectors/search_snapshot/collector.py`. A plugin that wants a Search recorded on a schedule writes a subclass of a few lines, registers it, and seeds a `Schedule` for it (`spec-tap-cares-scheduler.md`). The base class does the work: read each Search, run it, build the snapshot, submit one GRIFT batch.
 
@@ -1114,18 +1114,18 @@ A subclass belongs in the plugin that owns the report, because the Search ids it
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-search-snapshot-collector-1 | Abstract Base, No Registration | Proposed | `SearchSnapshotCollector` subclasses `CollectorBase`, is importable from the path above, and compliance_core registers no collector. | |
-| req-compliance-core-search-snapshot-collector-2 | Subclass Contract | Proposed | A subclass without a non-empty `SOURCE` of at most 64 characters, or without a non-empty `SEARCH_ENTITY_IDS` tuple of UUID strings, is refused at class definition. | |
-| req-compliance-core-search-snapshot-collector-3 | Resolve Before Running | Proposed | An id that is not found, or that names a node other than a `search`, fails the run with an error naming the id before any Search runs; nothing is submitted. | |
-| req-compliance-core-search-snapshot-collector-4 | Runs Through The Search Service | Proposed | Each Search runs through `execute_search` with the Search's input defaults applied, and a Search that raises fails the run with nothing submitted. | |
-| req-compliance-core-search-snapshot-collector-5 | Rows Only | Proposed | A result with `rows` is snapshotted; one with no `rows` and empty `nodes` and `edges` is zero rows; one with no `rows` and any node or edge fails the run. | |
-| req-compliance-core-search-snapshot-collector-6 | Bounded And Honest | Proposed | At most `MAX_ROWS` rows are kept; `row_count` is the exact count of the Search's rows and `truncated` says whether any were dropped. | |
-| req-compliance-core-search-snapshot-collector-7 | Scalar Rows | Proposed | A list or object value is replaced by its canonical JSON text, a string longer than 4096 characters is cut to 4096, and one warning per run counts the conversions and cuts; the row is kept. | |
-| req-compliance-core-search-snapshot-collector-8 | Inputs Recorded | Proposed | `inputs_text` is the canonical JSON text (sorted keys, no spaces) of the defaults the run used. | |
-| req-compliance-core-search-snapshot-collector-9 | Fresh Key Every Run | Proposed | `snapshot_key` is `<search id>@<observed_at as UTC ISO 8601 to the microsecond>`, `observed_at` is taken once per run, and a key is never reused; two runs write two nodes. | |
-| req-compliance-core-search-snapshot-collector-10 | One Batch, Named | Proposed | One run submits one GRIFT batch with a collector-set name and description, holding the snapshot nodes and a `CAPTURES_SEARCH` edge from each to its Search by `to_entity_id`; nothing else is written. | |
-| req-compliance-core-search-snapshot-collector-11 | Zero Rows Is A Snapshot | Proposed | A Search that returns no rows still produces a snapshot with `row_count` 0, `rows` empty and `truncated` false. | A coverage of nothing is a data point. |
-| req-compliance-core-search-snapshot-collector-12 | No State Between Runs | Proposed | The collector reads no earlier snapshot and skips nothing because the figure is unchanged. | |
+| req-compliance-core-search-snapshot-collector-1 | Abstract Base, No Registration | Implemented | `SearchSnapshotCollector` subclasses `CollectorBase`, is importable from the path above, and compliance_core registers no collector. | |
+| req-compliance-core-search-snapshot-collector-2 | Subclass Contract | Implemented | A subclass without a non-empty `SOURCE` of at most 64 characters, or without a non-empty `SEARCH_ENTITY_IDS` tuple of UUID strings, is refused at class definition. | |
+| req-compliance-core-search-snapshot-collector-3 | Resolve Before Running | Implemented | An id that is not found, or that names a node other than a `search`, fails the run with an error naming the id before any Search runs; nothing is submitted. | |
+| req-compliance-core-search-snapshot-collector-4 | Runs Through The Search Service | Implemented | Each Search runs through `execute_search` with the Search's input defaults applied, and a Search that raises fails the run with nothing submitted. | |
+| req-compliance-core-search-snapshot-collector-5 | Rows Only | Implemented | A result with `rows` is snapshotted; one with no `rows` and empty `nodes` and `edges` is zero rows; one with no `rows` and any node or edge fails the run. | |
+| req-compliance-core-search-snapshot-collector-6 | Bounded And Honest | Implemented | At most `MAX_ROWS` rows are kept; `row_count` is the exact count of the Search's rows and `truncated` says whether any were dropped. | |
+| req-compliance-core-search-snapshot-collector-7 | Scalar Rows | Implemented | A list or object value is replaced by its canonical JSON text, a string longer than 4096 characters is cut to 4096, and one warning per run counts the conversions and cuts; the row is kept. | |
+| req-compliance-core-search-snapshot-collector-8 | Inputs Recorded | Implemented | `inputs_text` is the canonical JSON text (sorted keys, no spaces) of the defaults the run used. | |
+| req-compliance-core-search-snapshot-collector-9 | Fresh Key Every Run | Implemented | `snapshot_key` is `<search id>@<observed_at as UTC ISO 8601 to the microsecond>`, `observed_at` is taken once per run, and a key is never reused; two runs write two nodes. | |
+| req-compliance-core-search-snapshot-collector-10 | One Batch, Named | Implemented | One run submits one GRIFT batch with a collector-set name and description, holding the snapshot nodes and a `CAPTURES_SEARCH` edge from each to its Search by `to_entity_id`; nothing else is written. | |
+| req-compliance-core-search-snapshot-collector-11 | Zero Rows Is A Snapshot | Implemented | A Search that returns no rows still produces a snapshot with `row_count` 0, `rows` empty and `truncated` false. | A coverage of nothing is a data point. |
+| req-compliance-core-search-snapshot-collector-12 | No State Between Runs | Implemented | The collector reads no earlier snapshot and skips nothing because the figure is unchanged. | |
 
 #### Future
 
