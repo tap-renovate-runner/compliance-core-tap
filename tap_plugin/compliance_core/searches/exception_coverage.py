@@ -189,7 +189,8 @@ def _evaluate(instance_id: str, finding_id: str, facts: _Facts, as_of: datetime)
         4: row is not None and row.outcome == "held",
         5: row is not None and _fresh(row, exception.verify_within_hours if exception else None, as_of),
         6: exception is not None and _exception_covers(exception, as_of),
-        7: row is not None and facts.anchors.get(instance_id, 0) >= row.anchor_count,
+        # At least one, whatever anchor_count says: a scope of zero anchors would be a blanket approval.
+        7: row is not None and facts.anchors.get(instance_id, 0) >= max(row.anchor_count, 1),
     }
 
 
@@ -218,14 +219,9 @@ def finding_exception_coverage(
     facts = _gather(instance_ids, sorted(bound), db_alias=db_alias)
     rows: list[dict[str, Any]] = []
     for finding in sorted(bound):
-        best: tuple[int, str, dict[int, bool]] | None = None
-        for instance in sorted(bound[finding]):
-            conditions = _evaluate(instance, finding, facts, as_of)
-            passed = sum(conditions.values())
-            if best is None or passed > best[0]:  # sorted ascending, so a tie keeps the lower instance id
-                best = (passed, instance, conditions)
-        assert best is not None  # nosec B101 - bound[finding] is never empty
-        _, instance, conditions = best
+        scored = [(instance, _evaluate(instance, finding, facts, as_of)) for instance in sorted(bound[finding])]
+        # max() keeps the first of equal scores, and the instances are sorted, so a tie breaks on the lower id.
+        instance, conditions = max(scored, key=lambda item: sum(item[1].values()))
         failing = next((n for n in sorted(conditions) if not conditions[n]), None)
         granters = facts.granted_by.get(instance, set())
         rows.append(

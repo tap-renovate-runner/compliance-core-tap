@@ -240,6 +240,17 @@ class TestConditions:
         assert delete_node(case.anchors[0].pk).success
         assert verdict(case) == (False, "condition 7: instance has its declared anchors")
 
+    @pytest.mark.spec("req-compliance-core-exception-coverage-3")
+    def test_condition_7_an_instance_with_no_anchor_covers_nothing_even_if_it_declares_zero(self) -> None:
+        """The model refuses anchor_count 0; the runner does not rely on that (a row edited under it)."""
+        from tap_plugin.compliance_core.models import ComplianceExceptionInstance
+
+        case = Case()
+        for edge in case.scoped:
+            delete_edge_by_entity(str(edge.entity_id), reason="operator")
+        ComplianceExceptionInstance.objects.filter(entity=case.inst).update(anchor_count=0)
+        assert verdict(case) == (False, "condition 7: instance has its declared anchors")
+
     @pytest.mark.spec("req-compliance-core-exception-coverage-6")
     def test_a_scope_edge_from_a_non_instance_is_never_read(self) -> None:
         """The scope edge is permitted from a finding (permission union); coverage reads it only from the instance."""
