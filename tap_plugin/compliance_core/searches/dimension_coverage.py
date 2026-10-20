@@ -36,8 +36,10 @@ from django.db.models import Count
 from django.db.models.fields.json import KeyTextTransform
 
 from tap_grid.gryphon import read_scope
-from tap_grid.models import Dimension, Search
+from tap_grid.models import Search
 from tap_grid.registry import get_model_class
+
+from .dimension_dictionary import read_dictionary as _dictionary
 
 
 def _inputs(inputs: dict[str, Any]) -> tuple[str, list[str]]:
@@ -57,20 +59,6 @@ def _label(entity_type: str) -> str:
         return str(get_model_class(entity_type)._meta.verbose_name)  # type: ignore[attr-defined]
     except KeyError:
         return entity_type
-
-
-def _dictionary(key: str, *, db_alias: str) -> tuple[str | None, dict[str, str]]:
-    """The key's description (None without a node) and ``{value: description}`` from the ``<key>.<value>`` nodes."""
-    prefix = f"{key}."
-    description: str | None = None
-    declared: dict[str, str] = {}
-    nodes = read_scope.node_relation(read_scope.DEFAULT_SCOPE, Dimension, db_alias=db_alias)
-    for name, text in nodes.filter(name__startswith=key).values_list("name", "description"):
-        if name == key:
-            description = text
-        elif name.startswith(prefix) and "." not in name[len(prefix) :]:
-            declared[name[len(prefix) :]] = text
-    return description, declared
 
 
 def _plural(count: int, noun: str) -> str:
