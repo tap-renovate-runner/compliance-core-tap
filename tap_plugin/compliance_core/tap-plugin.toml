@@ -44,6 +44,8 @@ component-severity = "tap_plugin.compliance_core.searches.cross_tabs.component_s
 findings-reached-count = "tap_plugin.compliance_core.searches.reach.findings_reached_count"
 findings-reached-list = "tap_plugin.compliance_core.searches.reach.findings_reached_list"
 dimension-coverage = "tap_plugin.compliance_core.searches.dimension_coverage.dimension_coverage"
+finding-exception-coverage = "tap_plugin.compliance_core.searches.exception_coverage.finding_exception_coverage"
+exceptions-due-review = "tap_plugin.compliance_core.searches.exception_coverage.exceptions_due_review"
 
 [[boot.records]]
 name = "ci"
