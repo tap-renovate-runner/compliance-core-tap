@@ -139,6 +139,7 @@ layer.
 | req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, `SCANNED_COMPLIANCE_TARGET`. |
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
+| req-compliance-core-dimension-coverage | [Dimension Coverage Search](#dimension-coverage-search) | Implemented | One generic `module` Search runner, `dimension-coverage`, counts the entities carrying each value of a dimension key, broken down by entity type, which Gryphon cannot group. |
 | req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
@@ -587,6 +588,52 @@ The tap_viz status badge population reads `entity_id` and `count`; its info wind
 | req-compliance-core-reach-10 | Component Field | Implemented | Each list row carries `component`, the name of the carrier through which its finding was reached; the finding is still one row, so the row count is unchanged. | `::TestList::test_component_names_the_carrier_and_leaves_the_row_count_alone` |
 | req-compliance-core-reach-11 | Component Join, Order And Cap | Implemented | A finding reached through several carriers reads their distinct names sorted and joined with `, `; past 3 names the rest read `+k more`. | `::TestList::test_component_joins_sorted_names_and_caps_with_k_more` |
 | req-compliance-core-reach-12 | Unnamed Carrier | Implemented | A carrier with no name contributes nothing to `component`; with no named carrier it is `""`, never `None` or `"None"`. | `::TestList::test_an_unnamed_carrier_gives_an_empty_component_never_none` |
+
+### Dimension Coverage Search
+----
+RID: `req-compliance-core-dimension-coverage`
+
+Status: `Implemented`
+
+**Gryphon has no labelless aggregate grouped by entity type and by dimension value.** "How many entities carry each value of this dimension, and of what types" is a count over every node regardless of type, grouped by `entity_type` and by the value of one dimension key. Gryphon cannot write it: a MATCH needs a node label, and a count grouped by the entity type itself or by a dimension value taken from a Search input is not supported. A `module` Search runner computes it with Django ORM aggregation under the read rules Gryphon applies (`req-grid-search-module`; George's ruling to build a module runner rather than the Gryphon capability), in `tap_plugin/compliance_core/searches/dimension_coverage.py`, registered in the manifest `[searches]` table and stored as `tap_plugin.compliance_core.searches.dimension_coverage:dimension-coverage`. A Search that uses it should say in its description that Gryphon lacks this capability (a labelless aggregate grouped by entity type and by dimension value).
+
+The runner knows no dimension key, value or entity type. Its inputs come from the Search's `input_schema` defaults:
+
+| input | meaning |
+| --- | --- |
+| `dimension_key` | The dimension to cover, for example `dataclass.customer` (required, non-empty string). |
+| `exclude_types` | Entity types that are not counted, for example the spine rows of edges and batches (array of strings, default none). |
+
+**The dictionary is read from the grid.** The key's own `dimension` node supplies the key's description; the values are the `dimension` nodes named `<key>.<value>` with a single-segment value (the dotted name carries the axis-to-value relationship, `spec-grid-dimension.md`), each with its own description. A value stamped on an entity that has no dictionary node is counted too, with `declared` false and no description, so an undeclared value is visible rather than dropped. A declared value nothing carries is an honest zero.
+
+One row, for the key:
+
+| field | meaning |
+| --- | --- |
+| `key` | The `dimension_key` input. |
+| `description` | The key's `dimension` node description, null when the key has no node. |
+| `total` | Entities carrying any value of the key (int). |
+| `values` | One item per value, declared values in name order and then undeclared values in name order: `value`, `description` (null when undeclared), `declared` (bool), `count` (int) and `by_type`, a list of `{type, label, count}` ordered by count descending then type. `label` is the entity type's registered name (the model's `verbose_name`), else the type itself. |
+| `values_text` | One line per value, `<value>: <description>` (`no description in the dictionary` when undeclared), made from `values` so a card can print it. |
+| `breakdown_text` | One line per value, `<value>: none` or `<value>: <n> component(s): <label> <n>, ...`, made from `values`. |
+
+Tombstoned entities and tombstoned dimension nodes contribute nothing (`tap_grid.gryphon.read_scope`); the caller's `db_alias` is used for every query.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-dimension-coverage-1 | Registered From The Manifest | Implemented | The runner is declared in `[searches]` and registered in the search runner registry at plugin load. | `tests/test_dimension_coverage_search.py::TestRegistration` |
+| req-compliance-core-dimension-coverage-2 | Envelope Shape | Implemented | The result passes through the search service with the Search's `input_schema` defaults applied, has empty `nodes` and `edges`, and every value in `rows` survives `json.dumps`. | `::TestRegistration::test_a_module_search_runs_through_the_search_service_with_the_schema_defaults` |
+| req-compliance-core-dimension-coverage-3 | Counted By Entity Type | Implemented | Each value's count is the number of live entities stamped with it, split by entity type, ordered by count descending then type; the key's total is their sum. | `::TestCounts::test_each_value_is_counted_by_entity_type` |
+| req-compliance-core-dimension-coverage-4 | Declared Zero | Implemented | A value with a dictionary node that nothing carries is listed with count 0 and an empty `by_type`. | `::TestCounts::test_a_declared_value_nothing_carries_is_an_honest_zero` |
+| req-compliance-core-dimension-coverage-5 | Undeclared Value | Implemented | A stamped value with no dictionary node is counted, marked `declared` false, has a null description and follows the declared values. | `::TestCounts::test_an_undeclared_value_is_counted_and_marked` |
+| req-compliance-core-dimension-coverage-6 | Only The Key | Implemented | An entity with no value for the key, and an entity stamped under another key, are not counted; another key's dictionary nodes are not read. | `::TestCounts::test_another_key_and_unstamped_entities_do_not_count` |
+| req-compliance-core-dimension-coverage-7 | Read Scope | Implemented | A tombstoned entity contributes nothing. | `::TestCounts::test_a_tombstoned_entity_contributes_nothing` |
+| req-compliance-core-dimension-coverage-8 | Exclusions From Input | Implemented | Entity types in `exclude_types` are not counted; with none given nothing is excluded; no type name is hardcoded. | `::TestCounts::test_exclude_types_are_not_counted_and_nothing_is_excluded_by_default` |
+| req-compliance-core-dimension-coverage-9 | Key Without A Node | Implemented | A key with no dimension node answers one row with a null description, no values and total 0. | `::TestCounts::test_a_key_with_no_dimension_node_still_answers` |
+| req-compliance-core-dimension-coverage-10 | Display Strings | Implemented | `values_text` and `breakdown_text` are derived from `values`, one line per value in the same order. | `::TestText` |
+| req-compliance-core-dimension-coverage-11 | Input Validated | Implemented | A missing, blank or non-string `dimension_key` and an `exclude_types` that is not an array of strings are refused with a `ValueError` naming the input. | `::TestInputs` |
 
 ### Finding Detection Time
 ----
