@@ -192,6 +192,8 @@ layer.
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
 | req-compliance-core-migration | [Extraction & Migration](#extraction--migration) | Implemented | Rename `fedramp_20x_ksi__*` → `compliance_core__compliance_*`; ids regenerate (collected, not seeded); phased first slice; pre-eviction. |
 | req-compliance-core-nongoals | [v0 Non-Goals](#v0-non-goals) | Implemented | `ksi_*` and `vdr_*` stay in fedramp; no collector; no regime logic; generic `component` deferred. |
+| req-compliance-core-search-snapshot | [Search Snapshot Modeling](#search-snapshot-modeling) | Proposed | `compliance_search_snapshot`: one run of one Search, with its result rows held inside the node, keyed by the Search and the run time, and an edge to the Search it ran. |
+| req-compliance-core-search-snapshot-collector | [Search Snapshot Collector Base](#search-snapshot-collector-base) | Proposed | `SearchSnapshotCollector`: an abstract collector that runs the Searches a subclass names and writes one snapshot per Search per run. compliance_core registers none. |
 
 ### Plugin Scope
 ----
@@ -223,6 +225,7 @@ faithfully from the `fedramp_20x_ksi` originals:
 | `compliance_core__compliance_finding` | `fedramp_20x_ksi__finding` | `name`, `summary`, `description`, `status`, `first_detected_at` (added 2026-10-19, see `req-compliance-core-finding-detection`), `source` + `source_key` (identity) |
 | `compliance_core__compliance_exception` | `fedramp_20x_ksi__exception` | `name`, `description`, `status`, `source` + `source_key` (identity); proposed 2026-10-19: `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at`, `verify_within_hours` (`req-compliance-core-exception`) |
 | `compliance_core__compliance_boundary` | `fedramp_20x_ksi__boundary` | `name`, `description`, `source` + `source_key` (identity) |
+| `compliance_core__compliance_search_snapshot` | new, proposed 2026-10-20 | `name`, `source` + `snapshot_key` (identity), `search_name`, `observed_at`, `row_count`, `rows`, `truncated`, `inputs_text`; see `req-compliance-core-search-snapshot` |
 
 `compliance_artifact` and `compliance_context` keep their names (already
 `compliance_`-prefixed). `boundary` moves here because every compliance regime scopes
@@ -328,6 +331,7 @@ type. Four move directly with their generic endpoints; the fifth
 | `CARRIES_COMPLIANCE_FINDING` | `HAS_FINDING` | any asset (wildcard source) → `compliance_finding` |
 | `SCOPED_TO_COMPLIANCE_BOUNDARY` | `SCOPED_TO_BOUNDARY` | any component (wildcard source) → `compliance_boundary` |
 | `CONCERNS_COMPLIANCE_CONTROL` | `RELATED_INDICATOR` | `compliance_finding` → any control (wildcard target) |
+| `CAPTURES_SEARCH` | new, proposed 2026-10-20 | `compliance_search_snapshot` → `search` (`req-compliance-core-search-snapshot`) |
 
 **Renamed 2026-09-10 (Issue# 5 - tap-plugin-compliance-core).** `HAS_COMPLIANCE_EVIDENCE` →
 `CITES_COMPLIANCE_EVIDENCE` and `HAS_COMPLIANCE_FINDING` → `CARRIES_COMPLIANCE_FINDING`: both
@@ -1003,6 +1007,129 @@ What a checker owes the grid:
 | req-compliance-core-exception-checker-4 | Window Not Shorter Than Schedule | Proposed | A checker never sets `verify_within_hours` below its own run interval. | Producer's rule; compliance_core cannot see the schedule. |
 | req-compliance-core-exception-checker-5 | Approval Is Recorded | Proposed | `approver` is set on every exception a checker grants. | Producer's rule. |
 
+### Search Snapshot Modeling
+----
+RID: `req-compliance-core-search-snapshot`
+
+Status: `Proposed`
+
+Coverage and compliance questions ("how much of the inventory is classified?") have an answer today and a different answer next week, and the trend is the evidence. The grid's history records a node's changes only, and a re-observation of an unchanged value is not a change (tap#322), so a figure that sat still for a week would leave no entries to read it back from, and an edge cannot point at a history row. A snapshot is therefore a node: a run of one Search, with the rows it returned held inside, written once and never updated. (Ruled by George 2026-10-20: results inside the node; the node and its edge are named `compliance_search_snapshot` and `CAPTURES_SEARCH`.)
+
+The node says nothing about what the Search measures. A coverage Search, a count by severity and an inventory total are all snapshotted the same way, so the node lives here beside the other regime-neutral compliance types.
+
+#### Implementation
+
+`compliance_core__compliance_search_snapshot`, a `BaseModel` modelled on `compliance_scan_run`.
+
+| field | type | meaning |
+| --- | --- | --- |
+| `name` | string, required | Display text: `<search_name> @ <observed_at>`. |
+| `source` | string, at most 64 | The plugin slug of the collector that wrote it. Half the identity. |
+| `snapshot_key` | string, 1 to 512 | `<search entity id>@<observed_at as UTC ISO 8601 to the microsecond>`. Half the identity. |
+| `search_name` | string | The Search's name when it ran. The edge names the Search; the name here keeps the snapshot readable after a rename. |
+| `observed_at` | date-time, required, never null | When the Search ran. A figure with no time is not a time series. |
+| `row_count` | integer, at least 0, required | The number of rows the Search returned, exact. |
+| `rows` | array, required | The rows, at most 1000: each a JSON object whose values are strings, numbers, booleans or null. Empty when the Search returned none. |
+| `truncated` | boolean, required | True when `rows` holds fewer rows than `row_count`. |
+| `inputs_text` | string, at most 65536, required | The Search's inputs for the run as canonical JSON text (keys sorted, no spaces), so a later reader can see what mapping or filter produced the rows even after the Search is edited. |
+
+`NATURAL_KEY` is `("source", "snapshot_key")`. A snapshot is an observation made once, so there is nothing to re-observe: a second run is a second node with a new key, and a node sent again under an existing key would replace the row and null whatever it left out (tap#1071). A collector never reuses a key.
+
+`rows` declares its item schema (an object with scalar-valued properties) rather than a bare `object`, so the content is described and Gryphon's type checks can reach into it as the grid's JSON schemas mature. Gryphon cannot filter inside an array (`req-grid-traversal-lang-filters-jsonpath` is tracked separately), so a report over time reads `rows` through a `module` Search, in the way `dimension-coverage` reads dimensions.
+
+The whole-record check (`BaseModel.validate()`, `req-grid-entity-validation-9`) refuses a node whose `truncated` disagrees with its counts: false requires `len(rows) == row_count`, true requires `len(rows) < row_count`.
+
+`CAPTURES_SEARCH__compliance_core`: `compliance_search_snapshot` → `search`, no properties, default dimension `{"compliance": "search-snapshot"}`. The slug is an action on a noun, so it passes `req-tap-plugin-edge-naming`.
+
+The node carries the default dimension `{"compliance": "search-snapshot"}`. Migrations are numbered when built: one schema migration adds the table; there is no data migration.
+
+#### Development
+
+`rows` is a copy of what the Search returned at one moment, so it is bounded: a thousand rows is a coverage summary or a short list, not an inventory dump. A Search that returns more is truncated, and `row_count` keeps the true size so the loss is visible. Entity-level lists belong to a Search run on demand, not to the snapshot.
+
+Snapshots grow without bound at one per Search per run. Retention is deliberately not specified here: at hourly cadence it is 24 nodes per Search per day, which no demo or first deployment will feel, and pruning needs a ruling on what an auditor must be able to read back.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-search-snapshot-1 | Node Declared | Proposed | `compliance_core__compliance_search_snapshot` is a registered `BaseModel` with the fields above, a `FIELD_CRUD_SCHEMA` and a `FIELD_VALIDATION_SCHEMA` for each. | |
+| req-compliance-core-search-snapshot-2 | Identity | Proposed | `NATURAL_KEY` is `("source", "snapshot_key")`; two snapshots of one Search at different times coexist and a repeated key is the same node. | |
+| req-compliance-core-search-snapshot-3 | Required Fields | Proposed | `source`, `snapshot_key`, `observed_at`, `row_count`, `rows`, `truncated` and `inputs_text` are required; a null `observed_at` is refused. | |
+| req-compliance-core-search-snapshot-4 | Rows Are Scalar Objects | Proposed | `rows` accepts at most 1000 items, each an object whose values are strings, numbers, booleans or null; a list or object value, or a 1001st item, is refused. | |
+| req-compliance-core-search-snapshot-5 | Truncation Agrees With Counts | Proposed | A node with `truncated` false and `len(rows)` unequal to `row_count`, or with `truncated` true and `len(rows)` not less than `row_count`, is refused by `validate()`. | |
+| req-compliance-core-search-snapshot-6 | Edge Declared | Proposed | `CAPTURES_SEARCH__compliance_core` exists from `compliance_search_snapshot` to `search`, with no properties and the `compliance: search-snapshot` dimension, and a snapshot can be linked to a Search node with it. | The test links a real `search` node, because the core `search` type declares no inbound edges of its own. |
+| req-compliance-core-search-snapshot-7 | Edge Passes Naming | Proposed | `validate_plugin` accepts the slug under `req-tap-plugin-edge-naming`. | |
+| req-compliance-core-search-snapshot-8 | Never Updated Here | Proposed | compliance_core contains no code that patches or replaces an existing snapshot. | |
+| req-compliance-core-search-snapshot-9 | Migration Numbered When Built | Proposed | The schema migration takes the next free number at build time; this spec fixes none. | The exceptions spec hard-coded `0006` and was wrong by the time it merged. |
+
+#### Future
+
+Retention and pruning. A figure derived across snapshots (a trend line, a percent change) is a Search over snapshots, not a field here. Entity-level rows, if an auditor needs to see which entities were uncovered at the time, would be a second node type edged from the snapshot.
+
+
+### Search Snapshot Collector Base
+----
+RID: `req-compliance-core-search-snapshot-collector`
+
+Status: `Proposed`
+
+An abstract collector class, `SearchSnapshotCollector`, in `tap_plugin/compliance_core/collectors/search_snapshot/collector.py`. A plugin that wants a Search recorded on a schedule writes a subclass of a few lines, registers it, and seeds a `Schedule` for it (`spec-tap-cares-scheduler.md`). The base class does the work: read each Search, run it, build the snapshot, submit one GRIFT batch.
+
+compliance_core registers no collector itself, and the base class is not registered. The class imports `tap_cares.collectors.CollectorBase`; `tap_cares` is core, so this is no dependency above core (`req-compliance-core-deps`). The carve-out from `req-compliance-core-nongoals` is recorded there.
+
+**Why a base class and a subclass, not one configurable collector.** `CollectorConfig` is two ids and nothing else, with no parameters and no scheduler overrides (`req-tap-cares-collector-config-6`), each registry key has one `Collector` node (`req-tap-cares-collector-model-7`), and the registry takes classes, never factories (`req-tap-cares-collector-module-class-1`). So the Searches to run have to be named by the class. The subclass names them by entity id: Searches are keyless and have no unique name, so a name could match two. (Ruled by George 2026-10-20: for the demo the Search is hard-coded in the subclass, in the plugin that owns the report.)
+
+#### Implementation
+
+A subclass declares two class attributes and nothing else is required:
+
+| attribute | meaning |
+| --- | --- |
+| `SOURCE` | The plugin slug, 1 to 64 characters; written to every snapshot's `source`. |
+| `SEARCH_ENTITY_IDS` | A non-empty tuple of Search entity ids (UUID strings). |
+
+`MAX_ROWS` (default 1000, never above the model's limit) may be lowered by a subclass.
+
+`run()`:
+
+1. `declare_no_surfaces()`: the run reads the grid, not a listing surface in a source system, so it claims no completeness, as `vdr_max` does.
+2. Resolve every id with the service-layer read `tap_grid.services.get_node`. If an id is not found, or the node is not a `search`, record an error naming the id and raise before any Search runs; nothing is submitted.
+3. Run each Search with `tap_grid.search.execute_search(search)`, so the Search's `input_schema` defaults apply. The collector runs as the shared `tap_cares.collector` program actor, whose bundle holds `grid.read` (`tap_auth.roles.json`), so the read is authorized. A Search that raises fails the run (the exception propagates, `req-tap-cares-collector-failure-mode`); nothing is submitted.
+4. Take the result's `rows`. A result with no `rows` key and empty `nodes` and `edges` is zero rows; a result with no `rows` and any node or edge is a graph-shaped Search that v0 cannot snapshot, and fails the run with an error naming it.
+5. Build one node per Search: `observed_at` is taken once at the start of the run and shared; `snapshot_key` is `<search id>@<observed_at>`; `rows` is the first `MAX_ROWS` rows; `row_count` is the exact count; `truncated` follows; `search_name` is the Search's name; `inputs_text` is the canonical JSON text of the `default` of each property in the Search's `input_schema` that declares one.
+6. A value in a row that is a list or an object is replaced by its canonical JSON text, and one warning per run says how many values were converted. A Search should flatten its own columns; the collector does not drop the row.
+7. Submit one GRIFT batch with `submit_grift`: the snapshot nodes, and for each an edge `CAPTURES_SEARCH__compliance_core` from the snapshot (by `from_ref`) to the Search (by `to_entity_id`). The batch `name` and `description` identify the collector and the Searches (`req-tap-cares-collector-grift-import`). The collector writes nothing else and never touches `CollectionJob`.
+8. Set `summary` (for example `Snapshot 1 search: 6 rows, none truncated.`) and record an info entry.
+
+#### Development
+
+A snapshot is cheap to take and is never merged with another, so the collector does not read earlier snapshots and has no state between runs. If the grid is unchanged an hourly run writes an identical figure at a new time, which is correct: the flat stretch is the point of the series. Reading earlier snapshots to skip an unchanged one would give back the history gap this design avoids.
+
+A subclass belongs in the plugin that owns the report, because the Search ids it names come from that plugin's or its project's seed. If the ids are missing the run fails with a clear error and writes nothing, rather than writing a partial set.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-search-snapshot-collector-1 | Abstract Base, No Registration | Proposed | `SearchSnapshotCollector` subclasses `CollectorBase`, is importable from the path above, and compliance_core registers no collector. | |
+| req-compliance-core-search-snapshot-collector-2 | Subclass Contract | Proposed | A subclass without a non-empty `SOURCE` of at most 64 characters, or without a non-empty `SEARCH_ENTITY_IDS` tuple of UUID strings, is refused at class definition. | |
+| req-compliance-core-search-snapshot-collector-3 | Resolve Before Running | Proposed | An id that is not found, or that names a node other than a `search`, fails the run with an error naming the id before any Search runs; nothing is submitted. | |
+| req-compliance-core-search-snapshot-collector-4 | Runs Through The Search Service | Proposed | Each Search runs through `execute_search` with the Search's input defaults applied, and a Search that raises fails the run with nothing submitted. | |
+| req-compliance-core-search-snapshot-collector-5 | Rows Only | Proposed | A result with `rows` is snapshotted; one with no `rows` and empty `nodes` and `edges` is zero rows; one with no `rows` and any node or edge fails the run. | |
+| req-compliance-core-search-snapshot-collector-6 | Bounded And Honest | Proposed | At most `MAX_ROWS` rows are kept; `row_count` is the exact count of the Search's rows and `truncated` says whether any were dropped. | |
+| req-compliance-core-search-snapshot-collector-7 | Scalar Rows | Proposed | A list or object value is replaced by its canonical JSON text and one warning per run counts the conversions; the row is kept. | |
+| req-compliance-core-search-snapshot-collector-8 | Inputs Recorded | Proposed | `inputs_text` is the canonical JSON text (sorted keys, no spaces) of the defaults the run used. | |
+| req-compliance-core-search-snapshot-collector-9 | Fresh Key Every Run | Proposed | `snapshot_key` is `<search id>@<observed_at as UTC ISO 8601 to the microsecond>`, `observed_at` is taken once per run, and a key is never reused; two runs write two nodes. | |
+| req-compliance-core-search-snapshot-collector-10 | One Batch, Named | Proposed | One run submits one GRIFT batch with a collector-set name and description, holding the snapshot nodes and a `CAPTURES_SEARCH` edge from each to its Search by `to_entity_id`; nothing else is written. | |
+| req-compliance-core-search-snapshot-collector-11 | Zero Rows Is A Snapshot | Proposed | A Search that returns no rows still produces a snapshot with `row_count` 0, `rows` empty and `truncated` false. | A coverage of nothing is a data point. |
+| req-compliance-core-search-snapshot-collector-12 | No State Between Runs | Proposed | The collector reads no earlier snapshot and skips nothing because the figure is unchanged. | |
+
+#### Future
+
+A data-driven way to name the Searches (a dimension stamp on the Search, or an edge from the Collector node) replaces the hard-coded ids once collectors can carry per-instance configuration.
+
+
 ### Naming Discipline
 ----
 RID: `req-compliance-core-naming`
@@ -1099,7 +1226,11 @@ Status: `Implemented`
   specialization + VDR eval fields (the coming fedramp_20x split), but not now.
 - **Generic `compliance_component`** — deferred; `ksi_component` remains KSI-bound in v0.
 - **No collector, no regime logic, no assessment engine.** compliance_core is
-  vocabulary only; regimes and deployments own the wiring.
+  vocabulary only; regimes and deployments own the wiring. One carve-out, proposed 2026-10-20:
+  compliance_core ships the abstract `SearchSnapshotCollector` base class
+  (`req-compliance-core-search-snapshot-collector`), because the snapshot is a compliance_core
+  node and every plugin that snapshots a Search would otherwise copy the same code. The plugin
+  registers no collector of its own: a subclass registers in the plugin that owns the Search.
 - **Exception checkers, severity ceilings, deviation-type mapping, approval workflow and pages**
   (proposed 2026-10-19) — the checker plugins live in their own repositories
   (`req-compliance-core-exception-checker`); a regime's limits on which `kind` may cover which severity
