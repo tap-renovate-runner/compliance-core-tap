@@ -6,6 +6,15 @@ from django.db import models
 
 from tap_grid.models import BaseModel
 
+#: A detection time is an instant, so a value must carry a time part. The `pattern` refuses a bare
+#: date ("2026-09-25"), which the date-time field would otherwise read as midnight and so invent a
+#: precision the producer never gave, shifting a deadline counted from it by up to a day.
+_DETECTION_TIME_SCHEMA: dict[str, Any] = {
+    "type": ["string", "null"],
+    "format": "date-time",
+    "pattern": r"^\d{4}-\d{2}-\d{2}T",
+}
+
 
 class ComplianceFinding(BaseModel):
     """A finding is the bridge between an asset in the graph and a compliance requirement.
@@ -61,7 +70,7 @@ class ComplianceFinding(BaseModel):
         "summary": {"type": "string"},
         "description": {"type": "string"},
         "status": {"type": "string", "enum": _STATUS_VALUES},
-        "first_detected_at": {"type": ["string", "null"], "format": "date-time"},
+        "first_detected_at": _DETECTION_TIME_SCHEMA,
     }
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
@@ -77,10 +86,7 @@ class ComplianceFinding(BaseModel):
             "validation": "jsonschema",
             "schema": {"type": "string", "enum": _STATUS_VALUES},
         },
-        "first_detected_at": {
-            "validation": "jsonschema",
-            "schema": {"type": ["string", "null"], "format": "date-time"},
-        },
+        "first_detected_at": {"validation": "jsonschema", "schema": _DETECTION_TIME_SCHEMA},
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["name"]
 

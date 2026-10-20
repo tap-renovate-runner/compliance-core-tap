@@ -590,8 +590,9 @@ Existing findings carry `null` until their producer next writes one. There is no
 | --- | --- | :---: | --- | --- |
 | req-compliance-core-finding-detection-1 | Null Is Unobserved | Implemented | A finding written without `first_detected_at` stores `null`, not a default. | `tests/test_finding_first_detected_at.py::TestFirstDetectedAt::test_an_unwritten_value_is_unobserved` |
 | req-compliance-core-finding-detection-2 | Round Trips As A Datetime | Implemented | A written ISO date-time reads back as the same instant. | `::test_a_written_value_round_trips_as_a_datetime` |
-| req-compliance-core-finding-detection-3 | Checked As A Date-Time | Implemented | A value that is not a date-time string (or null) is refused. | `::test_a_value_that_is_not_a_date_time_is_refused`, `::test_an_explicit_null_is_accepted` |
+| req-compliance-core-finding-detection-3 | Checked As A Date-Time | Implemented | A value that is not an ISO date-time string with a time part (or null) is refused, a bare date included: the date-time field would read it as midnight and invent a precision the producer never gave. | `::test_a_value_that_is_not_a_date_time_is_refused`, `::test_an_explicit_null_is_accepted` |
 | req-compliance-core-finding-detection-4 | Not Identity | Implemented | A finding re-sent with a different `first_detected_at` is the same node, with the new value. | `::test_it_is_not_part_of_the_identity` |
+| req-compliance-core-finding-detection-6 | A Replaced Value Stays In History | Implemented | After a producer moves or clears `first_detected_at`, every earlier value is still on record in the finding's history. | `::test_a_replaced_value_stays_in_the_findings_history`. The field is mutable by design; this is what makes a bad write recoverable. |
 | req-compliance-core-finding-detection-5 | Resend Duty | Implemented | A finding re-sent without the field goes back to `null`; the producer carries the earliest value forward. | `::test_a_resend_without_it_goes_back_to_unobserved`; pins platform behaviour, not enforced here. |
 
 ### Naming Discipline

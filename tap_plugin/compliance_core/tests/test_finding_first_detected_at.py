@@ -79,12 +79,14 @@ class TestFirstDetectedAt:
     def test_an_explicit_null_is_accepted(self) -> None:
         assert _create({**FINDING, "first_detected_at": None}).first_detected_at is None
 
-    @pytest.mark.parametrize("bad", ["yesterday", "25 Sep 2026", 7, True, {"at": "2026-09-25T12:45:55Z"}])
+    @pytest.mark.parametrize("bad", ["yesterday", "25 Sep 2026", "2026-09-25", 7, True, {"at": "2026-09-25T12:45:55Z"}])
     def test_a_value_that_is_not_a_date_time_is_refused(self, bad: Any) -> None:
         """req-compliance-core-finding-detection-3.
 
-        A bare ISO date ("2026-09-25") is not in the list: the platform's date-time field reads it as
-        midnight, as it does for every timestamp in this plugin, so it is accepted (observed 2026-10-19).
+        A bare ISO date ("2026-09-25") is refused on purpose. The platform's date-time field would read
+        it as midnight (observed 2026-10-19), inventing a precision the producer never gave, and a
+        deadline counted from this field would shift by up to a day. The schema's `pattern` requires
+        the time part.
         """
         assert not create_node(FINDING_TYPE, {**FINDING, "first_detected_at": bad}).success
 
@@ -99,6 +101,22 @@ class TestFirstDetectedAt:
         assert ids[0] == ids[1]
         assert model.objects.live().count() == 1
         assert model.objects.live().get().first_detected_at.isoformat() == "2026-09-20T08:00:00+00:00"
+
+    def test_a_replaced_value_stays_in_the_findings_history(self) -> None:
+        """req-compliance-core-finding-detection-6: the field is mutable, but a change is never lost.
+
+        A producer can move or clear the time, and compliance_core does not stop it (the resend duty
+        is the producer's). What it does guarantee is that the earlier value is still on record in the
+        finding's history after the live row has been replaced.
+        """
+        model = get_model_class(FINDING_TYPE)
+        assert grift_import(_doc({**FINDING, "first_detected_at": "2026-09-20T08:00:00Z"})).success
+        assert grift_import(_doc({**FINDING, "first_detected_at": "2026-09-25T12:45:55Z"})).success
+        assert grift_import(_doc(dict(FINDING))).success
+        row = model.objects.live().get()
+        assert row.first_detected_at is None
+        recorded = {h.first_detected_at.isoformat() for h in row.history.all() if h.first_detected_at is not None}
+        assert recorded == {"2026-09-20T08:00:00+00:00", "2026-09-25T12:45:55+00:00"}
 
     def test_a_resend_without_it_goes_back_to_unobserved(self) -> None:
         """req-compliance-core-finding-detection-5: pins the platform behaviour the producer duty rests on.
