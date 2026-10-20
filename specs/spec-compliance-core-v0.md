@@ -139,6 +139,7 @@ layer.
 | req-compliance-core-scan-edges | [Scan Edges](#scan-edges) | Implemented | `CONCERNS_COMPLIANCE_VULNERABILITY`, `PERFORMS_COMPLIANCE_SCAN_RUN`, `REPORTS_COMPLIANCE_FINDING`, `DETECTS_COMPLIANCE_FINDING`, `RUNS_AT_LOCATION`, `SCANNED_COMPLIANCE_TARGET`. |
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
+| req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
 | req-compliance-core-deps | [Dependency Direction](#dependency-direction) | Implemented | Downward-only; declared in consumers' `pyproject.toml` + `depends_on`. |
 | req-compliance-core-consumer-retargets | [Consumer Retargets](#consumer-retargets) | Implemented | fedramp/samsite retarget type strings + edges; the fedramp bridge edge `RELATED_INDICATOR` was generalized into `CONCERNS_COMPLIANCE_CONTROL` (compliance_core, wildcard target). |
@@ -172,7 +173,7 @@ faithfully from the `fedramp_20x_ksi` originals:
 | `compliance_core__compliance_artifact` | `fedramp_20x_ksi__compliance_artifact` | `kind` (oscal_ssp/oscal_poam/iiw), `source_url`, `content` (blob), signature-verification metadata, `source` + `source_key` (identity) |
 | `compliance_core__compliance_context` | `fedramp_20x_ksi__compliance_context` | `regime` (discriminator **and identity**), `fedramp_class` (+ future per-regime posture fields) |
 | `compliance_core__compliance_evidence` | `fedramp_20x_ksi__evidence` | `name`, `description`, `kind`, `source` + `source_key` (identity) |
-| `compliance_core__compliance_finding` | `fedramp_20x_ksi__finding` | `name`, `summary`, `description`, `status`, `source` + `source_key` (identity) |
+| `compliance_core__compliance_finding` | `fedramp_20x_ksi__finding` | `name`, `summary`, `description`, `status`, `first_detected_at` (added 2026-10-19, see `req-compliance-core-finding-detection`), `source` + `source_key` (identity) |
 | `compliance_core__compliance_exception` | `fedramp_20x_ksi__exception` | `name`, `description`, `status`, `source` + `source_key` (identity) |
 | `compliance_core__compliance_boundary` | `fedramp_20x_ksi__boundary` | `name`, `description`, `source` + `source_key` (identity) |
 
@@ -586,6 +587,35 @@ The tap_viz status badge population reads `entity_id` and `count`; its info wind
 | req-compliance-core-reach-10 | Component Field | Implemented | Each list row carries `component`, the name of the carrier through which its finding was reached; the finding is still one row, so the row count is unchanged. | `::TestList::test_component_names_the_carrier_and_leaves_the_row_count_alone` |
 | req-compliance-core-reach-11 | Component Join, Order And Cap | Implemented | A finding reached through several carriers reads their distinct names sorted and joined with `, `; past 3 names the rest read `+k more`. | `::TestList::test_component_joins_sorted_names_and_caps_with_k_more` |
 | req-compliance-core-reach-12 | Unnamed Carrier | Implemented | A carrier with no name contributes nothing to `component`; with no named carrier it is `""`, never `None` or `"None"`. | `::TestList::test_an_unnamed_carrier_gives_an_empty_component_never_none` |
+
+### Finding Detection Time
+----
+RID: `req-compliance-core-finding-detection`
+
+Status: `Implemented`
+
+A finding records when its producer first detected it. Compliance and vulnerability-response regimes count obligations from detection (FedRAMP's vulnerability reporting rules, for one, ask for the "time and source of the detection" and count the time allowed to evaluate from it), and nothing else on the finding says it: `status` says what the finding is now, and a finding is linked only to the latest scan run that saw it, so the earliest run cannot be reached by traversal. It is a fact about the finding, so it lives here and not on every consumer. (Added 2026-10-19, ruled by George; the issue is Issue# 43 - this repo.)
+
+#### Implementation
+
+`first_detected_at` on `compliance_finding`: a nullable date-time (`format: date-time` in both the create and the validation schema, so Gryphon `MIN` and `MAX` work over it as they do over the other timestamps). It is the producer's own record of when it first detected the finding: a GitHub alert's `created_at`, or the production time of the earliest SBOM that reported the finding. Three rules follow from the grid's conventions:
+
+- `null` is unobserved. It is never defaulted to the time this grid first saw the finding, which is ingestion time and not detection time.
+- It is not part of the natural key, which stays `("source", "source_key")`. A corrected time is the same finding.
+- A node sent under an existing key replaces the row, so a field the node omits goes back to null. A producer that re-sends a finding must send `first_detected_at` again, carrying the earliest value it knows and never re-stamping it with the time of the latest scan. compliance_core cannot enforce this; it is the producer's duty, and a test pins the platform behaviour it rests on.
+
+Existing findings carry `null` until their producer next writes one. There is no backfill.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-finding-detection-1 | Null Is Unobserved | Implemented | A finding written without `first_detected_at` stores `null`, not a default. | `tests/test_finding_first_detected_at.py::TestFirstDetectedAt::test_an_unwritten_value_is_unobserved` |
+| req-compliance-core-finding-detection-2 | Round Trips As A Datetime | Implemented | A written ISO date-time reads back as the same instant. | `::test_a_written_value_round_trips_as_a_datetime` |
+| req-compliance-core-finding-detection-3 | Checked As A Date-Time | Implemented | A value that is not an ISO date-time string with a time part (or null) is refused, a bare date included: the date-time field would read it as midnight and invent a precision the producer never gave. | `::test_a_value_that_is_not_a_date_time_is_refused`, `::test_an_explicit_null_is_accepted` |
+| req-compliance-core-finding-detection-4 | Not Identity | Implemented | A finding re-sent with a different `first_detected_at` is the same node, with the new value. | `::test_it_is_not_part_of_the_identity` |
+| req-compliance-core-finding-detection-6 | A Replaced Value Stays In History | Implemented | After a producer moves or clears `first_detected_at`, every earlier value is still on record in the finding's history. | `::test_a_replaced_value_stays_in_the_findings_history`. The field is mutable by design; this is what makes a bad write recoverable. |
+| req-compliance-core-finding-detection-5 | Resend Duty | Implemented | A finding re-sent without the field goes back to `null`; the producer carries the earliest value forward. | `::test_a_resend_without_it_goes_back_to_unobserved`; pins platform behaviour, not enforced here. |
 
 ### Naming Discipline
 ----
