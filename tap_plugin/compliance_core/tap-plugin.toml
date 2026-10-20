@@ -14,6 +14,7 @@ compliance_core__compliance_context = "tap_plugin.compliance_core.models.complia
 compliance_core__compliance_evidence = "tap_plugin.compliance_core.models.compliance_evidence.ComplianceEvidence"
 compliance_core__compliance_finding = "tap_plugin.compliance_core.models.compliance_finding.ComplianceFinding"
 compliance_core__compliance_exception = "tap_plugin.compliance_core.models.compliance_exception.ComplianceException"
+compliance_core__compliance_exception_instance = "tap_plugin.compliance_core.models.compliance_exception_instance.ComplianceExceptionInstance"
 compliance_core__compliance_boundary = "tap_plugin.compliance_core.models.compliance_boundary.ComplianceBoundary"
 compliance_core__compliance_vulnerability = "tap_plugin.compliance_core.models.compliance_vulnerability.ComplianceVulnerability"
 compliance_core__compliance_scanner = "tap_plugin.compliance_core.models.compliance_scanner.ComplianceScanner"
@@ -31,6 +32,9 @@ REPORTS_COMPLIANCE_FINDING__compliance_core = "edges/REPORTS_COMPLIANCE_FINDING.
 DETECTS_COMPLIANCE_FINDING__compliance_core = "edges/DETECTS_COMPLIANCE_FINDING.edge.json"
 RUNS_AT_LOCATION__compliance_core = "edges/RUNS_AT_LOCATION.edge.json"
 SCANNED_COMPLIANCE_TARGET__compliance_core = "edges/SCANNED_COMPLIANCE_TARGET.edge.json"
+GRANTS_COMPLIANCE_EXCEPTION_INSTANCE__compliance_core = "edges/GRANTS_COMPLIANCE_EXCEPTION_INSTANCE.edge.json"
+EXEMPTS_COMPLIANCE_VULNERABILITY__compliance_core = "edges/EXEMPTS_COMPLIANCE_VULNERABILITY.edge.json"
+SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET__compliance_core = "edges/SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET.edge.json"
 
 # Module Search runners (req-compliance-core-searches). Registered under the runner's module scope,
 # so a Search stores `tap_plugin.compliance_core.searches.cross_tabs:<key>`.

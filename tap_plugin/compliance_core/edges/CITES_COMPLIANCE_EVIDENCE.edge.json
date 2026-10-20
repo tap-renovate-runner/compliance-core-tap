@@ -1,8 +1,8 @@
 {
   "slug": "CITES_COMPLIANCE_EVIDENCE__compliance_core",
   "name": "Cites Compliance Evidence",
-  "description": "A finding cites the evidence that supports its verdict. The support_kind property classifies the verdict the evidence supports (passing, violation, informational). Multiple CITES_COMPLIANCE_EVIDENCE edges per finding are expected; the finding's effective verdict is aggregated from its evidence.",
-  "sources": ["compliance_core__compliance_finding"],
+  "description": "A finding, or an exception instance, cites the evidence that supports its verdict. The support_kind property classifies the verdict the evidence supports (passing, violation, informational). Multiple CITES_COMPLIANCE_EVIDENCE edges per finding are expected; the finding's effective verdict is aggregated from its evidence.",
+  "sources": ["compliance_core__compliance_finding", "compliance_core__compliance_exception_instance"],
   "targets": ["compliance_core__compliance_evidence"],
   "property_schema": {
     "type": "object",
