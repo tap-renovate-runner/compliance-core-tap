@@ -183,7 +183,7 @@ layer.
 | req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Implemented | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
 | req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Implemented | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
 | req-compliance-core-exception-edges | [Exception Edges](#exception-edges) | In Development | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` (containment), `EXEMPTS_COMPLIANCE_VULNERABILITY`, `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET`; `COVERS_COMPLIANCE_FINDING` moves to the instance; `CITES_COMPLIANCE_EVIDENCE` accepts an instance. |
-| req-compliance-core-exception-coverage | [Exception Coverage](#exception-coverage) | Proposed | Coverage is computed, never stored: two `module` Search runners, `finding-exception-coverage` and `exceptions-due-review`. Unset or stale means not covered. |
+| req-compliance-core-exception-coverage | [Exception Coverage](#exception-coverage) | Implemented | Coverage is computed, never stored: two `module` Search runners, `finding-exception-coverage` and `exceptions-due-review`. Unset or stale means not covered. |
 | req-compliance-core-exception-lifecycle | [Exception Lifecycle](#exception-lifecycle) | Proposed | Withdrawal cascades through containment; falsification updates the instance and keeps it; a re-minted finding is a new entity the checker must re-bind. |
 | req-compliance-core-exception-checker | [Exception Checker Contract](#exception-checker-contract) | Proposed | What a plugin that checks an exception on a schedule owes the grid; compliance_core ships no checker. |
 | req-compliance-core-naming | [Naming Discipline](#naming-discipline) | Implemented | `compliance_` node-name prefix; edge object noun tracks the node type. |
@@ -829,7 +829,7 @@ Three new edges, one retargeted, one widened. Names are proposed and must pass `
 ----
 RID: `req-compliance-core-exception-coverage`
 
-Status: `Proposed`
+Status: `Implemented`
 
 Whether a finding is covered is a question the grid answers when asked, from facts, and never a flag written onto the finding or the exception. Storing it would need undoing in every path that can end it (DefectDojo reverses `active` and `risk_accepted` in four code paths and has to decide whether the clock restarts); computing it ends coverage by the absence of a fact and needs nothing undone.
 
@@ -857,18 +857,18 @@ Null or stale anywhere in that list means uncovered. This is the grid's null con
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-exception-coverage-1 | Registered From The Manifest | Proposed | Both runners are declared in `[searches]` and registered at plugin load, and their results pass through the search service with the schema defaults applied. | As `req-compliance-core-reach-1`. |
-| req-compliance-core-exception-coverage-2 | All Eight Conditions Are Required | Proposed | A finding with an instance satisfying all eight reads `covered` true; making any one fail, one at a time, reads false with that condition in `reason`. | One test per condition. |
-| req-compliance-core-exception-coverage-3 | Unset Is Uncovered | Proposed | A null `outcome`, null `verified_at`, null `verify_within_hours`, null `kind` and an instance with no vulnerability or no anchor each read uncovered. | |
-| req-compliance-core-exception-coverage-4 | Stale Is Uncovered | Proposed | An instance verified longer ago than `verify_within_hours` before `as_of` reads uncovered, and one verified inside the window reads covered. | |
-| req-compliance-core-exception-coverage-10 | A Future Check Time Is Unverified | Proposed | An instance whose `verified_at` is after `as_of` reads uncovered, whatever `verify_within_hours` is; one verified a year after `as_of` does not read covered. | Found in review of the draft; a mistaken or hostile future timestamp must not keep coverage fresh. |
+| req-compliance-core-exception-coverage-1 | Registered From The Manifest | Implemented | Both runners are declared in `[searches]` and registered at plugin load, and their results pass through the search service with the schema defaults applied. | As `req-compliance-core-reach-1`. |
+| req-compliance-core-exception-coverage-2 | All Eight Conditions Are Required | Implemented | A finding with an instance satisfying all eight reads `covered` true; making any one fail, one at a time, reads false with that condition in `reason`. | One test per condition. |
+| req-compliance-core-exception-coverage-3 | Unset Is Uncovered | Implemented | A null `outcome`, null `verified_at`, null `verify_within_hours`, null `kind` and an instance with no vulnerability or no anchor each read uncovered. | |
+| req-compliance-core-exception-coverage-4 | Stale Is Uncovered | Implemented | An instance verified longer ago than `verify_within_hours` before `as_of` reads uncovered, and one verified inside the window reads covered. | |
+| req-compliance-core-exception-coverage-10 | A Future Check Time Is Unverified | Implemented | An instance whose `verified_at` is after `as_of` reads uncovered, whatever `verify_within_hours` is; one verified a year after `as_of` does not read covered. | Found in review of the draft; a mistaken or hostile future timestamp must not keep coverage fresh. |
 | req-compliance-core-exception-coverage-11 | Anchor Reachability Is A Trust Boundary | Backlog | Coverage does not check that a live anchor reaches the covered finding; the checker's binding is trusted. Building that check is `req-compliance-core-exception-edges-7`. | Recorded so no one reads the anchor rule as stronger than it is. No test asserts the unreached case reads covered: that would pin a fail-open as expected. Open for the maintainer: make reachability a coverage condition in v0 instead. |
-| req-compliance-core-exception-coverage-12 | Coverage Does Not Begin Before The Grant | Proposed | An exception whose `granted_at` is null, or after `as_of`, covers nothing; one granted at or before `as_of`, with every other condition met, can cover. | Found in review: a null or future grant time must not let an exception cover a current finding. |
-| req-compliance-core-exception-coverage-5 | Expiry Is Computed | Proposed | An exception whose stored `status` is `active` but whose `expires_at` is before `as_of` covers nothing. | |
-| req-compliance-core-exception-coverage-6 | A Lost Anchor Never Widens The Scope | Proposed | Retiring one of two anchors makes the instance uncovered; it does not become the general case. | |
-| req-compliance-core-exception-coverage-7 | Any Covering Instance Is Enough | Proposed | A finding with one failing and one covering instance reads covered; with two failing instances it reads uncovered with the reason of the closer. | |
-| req-compliance-core-exception-coverage-8 | Review Due | Proposed | `exceptions-due-review` lists an exception past `review_by`, one with no `review_by`, one past `expires_at` and one with no `verify_within_hours`, and omits one with none of these. | |
-| req-compliance-core-exception-coverage-9 | Read Scope And Input Validation | Proposed | A tombstoned instance, exception, finding or edge contributes nothing; a malformed `as_of`, a non-string `entity_id` or an out-of-range `max_results` is refused with a `ValueError` naming the input. | As `req-compliance-core-reach-5` and `-9`. |
+| req-compliance-core-exception-coverage-12 | Coverage Does Not Begin Before The Grant | Implemented | An exception whose `granted_at` is null, or after `as_of`, covers nothing; one granted at or before `as_of`, with every other condition met, can cover. | Found in review: a null or future grant time must not let an exception cover a current finding. |
+| req-compliance-core-exception-coverage-5 | Expiry Is Computed | Implemented | An exception whose stored `status` is `active` but whose `expires_at` is before `as_of` covers nothing. | |
+| req-compliance-core-exception-coverage-6 | A Lost Anchor Never Widens The Scope | Implemented | Retiring one of two anchors makes the instance uncovered; it does not become the general case. | |
+| req-compliance-core-exception-coverage-7 | Any Covering Instance Is Enough | Implemented | A finding with one failing and one covering instance reads covered; with two failing instances it reads uncovered with the reason of the closer. | |
+| req-compliance-core-exception-coverage-8 | Review Due | Implemented | `exceptions-due-review` lists an exception past `review_by`, one with no `review_by`, one past `expires_at` and one with no `verify_within_hours`, and omits one with none of these. | |
+| req-compliance-core-exception-coverage-9 | Read Scope And Input Validation | Implemented | A tombstoned instance, exception, finding or edge contributes nothing; a malformed `as_of`, a non-string `entity_id` or an out-of-range `max_results` is refused with a `ValueError` naming the input. | As `req-compliance-core-reach-5` and `-9`. |
 
 ### Exception Lifecycle
 ----
