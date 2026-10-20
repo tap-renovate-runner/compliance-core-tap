@@ -1,9 +1,16 @@
 {
   "slug": "COVERS_COMPLIANCE_FINDING__compliance_core",
   "name": "Covers Compliance Finding",
-  "description": "An exception covers a finding — formally accepting the risk the finding represents. An active exception may cover multiple findings.",
-  "sources": ["compliance_core__compliance_exception"],
-  "targets": ["compliance_core__compliance_finding"],
+  "description": "An exception instance covers a finding: the checker's binding of one scoped application of an exception to a specific finding. The instance, not the exception, is bound to a finding, so a decision to accept a vulnerability in one place never reads as acceptance everywhere. Whether the finding is covered is computed when asked from the exception, the instance and its check result, never stored on this edge.",
+  "sources": [
+    "compliance_core__compliance_exception_instance"
+  ],
+  "targets": [
+    "compliance_core__compliance_finding"
+  ],
+  "identity": {
+    "discriminators": []
+  },
   "default_dimensions": {
     "compliance": "finding"
   }

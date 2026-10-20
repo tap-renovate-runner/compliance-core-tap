@@ -2,9 +2,32 @@
 
 from typing import Any, ClassVar
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from tap_grid.models import BaseModel
+
+_KIND_VALUES = [
+    "false-positive",
+    "not-affected",
+    "mitigated",
+    "operational-requirement",
+    "accepted-risk",
+]
+#: The five OpenVEX `not_affected` justification labels, in kebab-case.
+_JUSTIFICATION_VALUES = [
+    "component-not-present",
+    "vulnerable-code-not-present",
+    "vulnerable-code-not-in-execute-path",
+    "vulnerable-code-cannot-be-controlled-by-adversary",
+    "inline-mitigations-already-exist",
+]
+#: An instant, so a value must carry a time part (a bare date would read as midnight).
+_INSTANT_SCHEMA: dict[str, Any] = {
+    "type": ["string", "null"],
+    "format": "date-time",
+    "pattern": r"^\d{4}-\d{2}-\d{2}T",
+}
 
 
 class ComplianceException(BaseModel):
@@ -18,16 +41,18 @@ class ComplianceException(BaseModel):
     Regime-agnostic substrate: an exception formally accepts a finding under any
     regime; the regime is layered per-instance, not baked into the model.
 
-    v1 shape is minimal: name, description, status. By convention the `description`
-    carries the business justification. Additional workflow fields (expiration_date,
-    approver, review cadence) are deferred as explicit Future work in the spec.
+    An exception is the rule, not what it covers. It carries the fields a decision needs
+    (`kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at`,
+    `verify_within_hours`), all nullable so every producer that mints one today keeps working.
+    What it covers lives on its instances (`compliance_exception_instance`), which it contains.
+    By convention the `description` carries the business rationale.
 
     Identity (`req-compliance-core-identity`): found again by the system of record that
     granted it and that system's own reference — `("source", "source_key")`. A producer that
     writes neither gets a fresh node every run rather than an error, so writing them is the
     data contract a minting plugin owes this one.
 
-    Spec: plugins/compliance_core/specs/spec-compliance-core-v0.md
+    Spec: specs/spec-compliance-core-v0.md (`req-compliance-core-exception`)
     """
 
     ENTITY_TYPE: ClassVar[str] = "compliance_core__compliance_exception"
@@ -49,12 +74,29 @@ class ComplianceException(BaseModel):
 
     _STATUS_VALUES = ["active", "expired", "revoked"]
 
+    #: Instances are parts of their exception: deleting it with `cascade="contained"` retires them.
+    #: The exception and the finding, vulnerability and anchors an instance points at are not.
+    OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
+        {
+            "nodes": [{"type": "compliance_core__compliance_exception_instance"}],
+            "edges": [{"type": "GRANTS_COMPLIANCE_EXCEPTION_INSTANCE__compliance_core"}],
+        },
+    ]
+    CONTAINMENT_EDGES: ClassVar[tuple[str, ...]] = ("GRANTS_COMPLIANCE_EXCEPTION_INSTANCE__compliance_core",)
+
     FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = {
         "source": {"type": "string", "maxLength": 64},
         "source_key": {"type": "string", "maxLength": 512},
         "name": {"type": "string", "minLength": 1},
         "description": {"type": "string"},
         "status": {"type": "string", "enum": _STATUS_VALUES},
+        "kind": {"type": ["string", "null"], "enum": [*_KIND_VALUES, None]},
+        "justification": {"type": ["string", "null"], "enum": [*_JUSTIFICATION_VALUES, None]},
+        "approver": {"type": ["string", "null"], "maxLength": 200},
+        "granted_at": _INSTANT_SCHEMA,
+        "review_by": _INSTANT_SCHEMA,
+        "expires_at": _INSTANT_SCHEMA,
+        "verify_within_hours": {"type": ["integer", "null"], "minimum": 1},
     }
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
@@ -68,6 +110,19 @@ class ComplianceException(BaseModel):
         "status": {
             "validation": "jsonschema",
             "schema": {"type": "string", "enum": _STATUS_VALUES},
+        },
+        "kind": {"validation": "jsonschema", "schema": {"type": ["string", "null"], "enum": [*_KIND_VALUES, None]}},
+        "justification": {
+            "validation": "jsonschema",
+            "schema": {"type": ["string", "null"], "enum": [*_JUSTIFICATION_VALUES, None]},
+        },
+        "approver": {"validation": "jsonschema", "schema": {"type": ["string", "null"], "maxLength": 200}},
+        "granted_at": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
+        "review_by": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
+        "expires_at": {"validation": "jsonschema", "schema": _INSTANT_SCHEMA},
+        "verify_within_hours": {
+            "validation": "jsonschema",
+            "schema": {"type": ["integer", "null"], "minimum": 1},
         },
     }
     CREATE_REQUIRED: ClassVar[list[str]] = ["name"]
@@ -83,9 +138,63 @@ class ComplianceException(BaseModel):
     name = models.CharField(max_length=255, blank=True, default="")
     description = models.TextField(blank=True, default="")
     status = models.CharField(max_length=16, blank=True, default="active", db_index=True)
+    #: What sort of decision this is. Null = not observed; an exception with no kind covers nothing.
+    kind = models.CharField(  # noqa: DJ001  (req-compliance-core-exception: null = unobserved)
+        max_length=32,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Sort of decision: false-positive, not-affected, mitigated, operational-requirement, "
+        "accepted-risk. Null = not observed.",
+    )
+    #: Why a `not-affected` claim holds (an OpenVEX label). Refused with any other kind.
+    justification = models.CharField(  # noqa: DJ001  (req-compliance-core-exception: null = unobserved)
+        max_length=64,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="OpenVEX justification label; only with kind not-affected. Null = none given.",
+    )
+    approver = models.CharField(  # noqa: DJ001  (req-compliance-core-exception: null = unobserved)
+        max_length=200,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Person or role that approved the decision. Null = not observed.",
+    )
+    granted_at = models.DateTimeField(
+        null=True, blank=True, default=None, help_text="When the decision was made. Null = not observed."
+    )
+    review_by = models.DateTimeField(
+        null=True,
+        blank=True,
+        default=None,
+        db_index=True,
+        help_text="When a person is asked to look at it again. Null = no review date set (reported, not 'never').",
+    )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Hard ceiling after which the exception covers nothing. Null = no ceiling.",
+    )
+    verify_within_hours = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="How old an instance's last successful check may be before it stops counting. "
+        "Null = never fresh (covers nothing until set).",
+    )
 
     class Meta(BaseModel.Meta):
         db_table = "compliance_core__compliance_exception"
+
+    def validate(self) -> None:
+        """`justification` is an OpenVEX `not_affected` label, so it is allowed only with that kind."""
+        if self.justification and self.kind != "not-affected":
+            raise ValidationError(
+                {"justification": ["justification is allowed only when kind is 'not-affected'."]}
+            )
 
     def get_name(self) -> str:
         return self.name

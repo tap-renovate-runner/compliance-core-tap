@@ -179,9 +179,9 @@ layer.
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
 | req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
-| req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Proposed | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
-| req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Proposed | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
-| req-compliance-core-exception-edges | [Exception Edges](#exception-edges) | Proposed | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` (containment), `EXEMPTS_COMPLIANCE_VULNERABILITY`, `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET`; `COVERS_COMPLIANCE_FINDING` moves to the instance; `CITES_COMPLIANCE_EVIDENCE` accepts an instance. |
+| req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Implemented | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
+| req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Implemented | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
+| req-compliance-core-exception-edges | [Exception Edges](#exception-edges) | In Development | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` (containment), `EXEMPTS_COMPLIANCE_VULNERABILITY`, `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET`; `COVERS_COMPLIANCE_FINDING` moves to the instance; `CITES_COMPLIANCE_EVIDENCE` accepts an instance. |
 | req-compliance-core-exception-coverage | [Exception Coverage](#exception-coverage) | Proposed | Coverage is computed, never stored: two `module` Search runners, `finding-exception-coverage` and `exceptions-due-review`. Unset or stale means not covered. |
 | req-compliance-core-exception-lifecycle | [Exception Lifecycle](#exception-lifecycle) | Proposed | Withdrawal cascades through containment; falsification updates the instance and keeps it; a re-minted finding is a new entity the checker must re-bind. |
 | req-compliance-core-exception-checker | [Exception Checker Contract](#exception-checker-contract) | Proposed | What a plugin that checks an exception on a schedule owes the grid; compliance_core ships no checker. |
@@ -666,7 +666,7 @@ Existing findings carry `null` until their producer next writes one. There is no
 ----
 RID: `req-compliance-core-exception`
 
-Status: `Proposed`
+Status: `Implemented`
 
 An exception is a decision that a class of finding is acceptable, and it is only as good as what the decision says and when it was last checked. Today `compliance_exception` carries a `name`, a `description` and a `status` (`active`, `expired`, `revoked`), and its docstring defers expiration, approver and review cadence. This requirement adds them, additively and nullable, so every producer that mints an exception today keeps working. **What an exception covers is not stored here**: it lives on the exception's instances (`req-compliance-core-exception-instance`), because a decision to accept log4j in one place must never read as acceptance of log4j everywhere.
 
@@ -694,18 +694,18 @@ An exception is the rule; it can be one a person wrote down in a risk register, 
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-exception-1 | New Fields Are Nullable | Proposed | An exception created with only a `name`, as every current producer does, is accepted and reads back with the seven new fields null. | Backward compatibility with `fedramp_20x_ksi`'s minted exceptions. |
-| req-compliance-core-exception-2 | Kind And Justification Are Closed | Proposed | A `kind` outside the five, a `justification` outside the five labels, and a `justification` on any `kind` but `not-affected` are refused. | Vocabulary drawn from GitHub's dismissal reasons, OpenVEX and the FedRAMP deviation types. |
-| req-compliance-core-exception-3 | Verify Window Is A Positive Integer | Proposed | `verify_within_hours` accepts an integer of at least 1 or null; zero, negatives and non-integers are refused. | |
-| req-compliance-core-exception-4 | Containment Declared | Proposed | `CONTAINMENT_EDGES` names `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` and that edge is a permitted outbound edge of the model. | The class-creation guard in `tap_grid/models.py`. |
-| req-compliance-core-exception-5 | Identity Unchanged | Proposed | The natural key stays `("source", "source_key")`; re-sending an exception under the same key is the same node. | `req-compliance-core-identity`. |
-| req-compliance-core-exception-6 | Additive Migration | Proposed | The schema migration adds the columns and changes no existing row. | |
+| req-compliance-core-exception-1 | New Fields Are Nullable | Implemented | An exception created with only a `name`, as every current producer does, is accepted and reads back with the seven new fields null. | Backward compatibility with `fedramp_20x_ksi`'s minted exceptions. |
+| req-compliance-core-exception-2 | Kind And Justification Are Closed | Implemented | A `kind` outside the five, a `justification` outside the five labels, and a `justification` on any `kind` but `not-affected` are refused. | Vocabulary drawn from GitHub's dismissal reasons, OpenVEX and the FedRAMP deviation types. |
+| req-compliance-core-exception-3 | Verify Window Is A Positive Integer | Implemented | `verify_within_hours` accepts an integer of at least 1 or null; zero, negatives and non-integers are refused. | |
+| req-compliance-core-exception-4 | Containment Declared | Implemented | `CONTAINMENT_EDGES` names `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` and that edge is a permitted outbound edge of the model. | The class-creation guard in `tap_grid/models.py`. |
+| req-compliance-core-exception-5 | Identity Unchanged | Implemented | The natural key stays `("source", "source_key")`; re-sending an exception under the same key is the same node. | `req-compliance-core-identity`. |
+| req-compliance-core-exception-6 | Additive Migration | Implemented | The schema migration adds the columns and changes no existing row. | |
 
 ### Exception Instance Modeling
 ----
 RID: `req-compliance-core-exception-instance`
 
-Status: `Proposed`
+Status: `Implemented`
 
 `compliance_exception_instance` is one exception applied to one vulnerability within one declared scope, together with the result of the last attempt to show that application false. It is the grid's version of the record Kyverno writes into a policy report and Trivy prints for a suppressed finding: not the rule, but "this rule, here, last checked then, held". An exception has many instances and an instance has one exception.
 
@@ -732,18 +732,18 @@ The instance has no `status`. Its lifecycle is `outcome` plus retirement. Defaul
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-exception-instance-1 | The Node Exists With A Key And A Dimension | Proposed | The entity type is `compliance_core__compliance_exception_instance`, it keys on `("source", "source_key")`, and a new instance carries `compliance: exception-instance`. | |
-| req-compliance-core-exception-instance-2 | Outcome Has Three States | Proposed | `outcome` accepts `held`, `falsified` or null; any other string is refused; null reads back as null, never as an empty string. | Null is unobserved (the grid's null convention). |
-| req-compliance-core-exception-instance-3 | Anchor Count Is Required | Proposed | An instance created without `anchor_count`, or with a value below 1, is refused. | A scope of zero anchors would be a blanket approval. |
-| req-compliance-core-exception-instance-4 | Same Key Is The Same Node | Proposed | Re-sending an instance with the same `(source, source_key)` updates it; the producer re-sends every field it owns. | A GRIFT node under an existing key replaces the row and nulls omitted fields (Issue# 1071 - tap), so a partial re-send would erase `outcome`. |
-| req-compliance-core-exception-instance-5 | Wrong Ends Refused | Proposed | An edge at an instance in the wrong direction or to the wrong type is refused. | |
+| req-compliance-core-exception-instance-1 | The Node Exists With A Key And A Dimension | Implemented | The entity type is `compliance_core__compliance_exception_instance`, it keys on `("source", "source_key")`, and a new instance carries `compliance: exception-instance`. | |
+| req-compliance-core-exception-instance-2 | Outcome Has Three States | Implemented | `outcome` accepts `held`, `falsified` or null; any other string is refused; null reads back as null, never as an empty string. | Null is unobserved (the grid's null convention). |
+| req-compliance-core-exception-instance-3 | Anchor Count Is Required | Implemented | An instance created without `anchor_count`, or with a value below 1, is refused. | A scope of zero anchors would be a blanket approval. |
+| req-compliance-core-exception-instance-4 | Same Key Is The Same Node | Implemented | Re-sending an instance with the same `(source, source_key)` updates it; the producer re-sends every field it owns. | A GRIFT node under an existing key replaces the row and nulls omitted fields (Issue# 1071 - tap), so a partial re-send would erase `outcome`. |
+| req-compliance-core-exception-instance-5 | Wrong Ends Refused | Implemented | An edge at an instance in the wrong direction or to the wrong type is refused wherever a closed end forbids it. | Edge validation is a permission union (`tap_grid/constraints.py`): an end whose type declares no edges allows everything, so an edge from or to such a type (a finding or evidence node) is not refused by the instance's declaration alone. Found building PR A. |
 | req-compliance-core-exception-instance-6 | Recording Check Time Without A New Version Each Run | Backlog | `verified_at` changes on every successful check. The grid treats re-observation as not a change, so the design needs either that rule to admit a check-time field or the freshness to be derived from the latest scan run that scanned the instance. | Open: Issue# 322 - tap and Issue# 323 - tap. v0 stores the field; the derived form is the alternative. |
 
 ### Exception Edges
 ----
 RID: `req-compliance-core-exception-edges`
 
-Status: `Proposed`
+Status: `In Development`
 
 Three new edges, one retargeted, one widened. Names are proposed and must pass `req-tap-plugin-edge-naming` (a verb and an object noun, no modal prefix, no trailing preposition).
 
@@ -770,12 +770,12 @@ Three new edges, one retargeted, one widened. Names are proposed and must pass `
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-exception-edges-1 | The Sentences Connect | Proposed | Each edge in the table connects its endpoints and carries the dimension above. | |
-| req-compliance-core-exception-edges-2 | Containment Is Only The Grant | Proposed | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` is the only edge in `CONTAINMENT_EDGES`; deleting an exception with `cascade="contained"` retires its instances, and deleting an instance leaves the exception, finding, vulnerability and anchors live. | `req-grid-service-delete-cascade`. |
-| req-compliance-core-exception-edges-3 | An Anchor May Be Any Node | Proposed | `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET` accepts any node as its target from an instance, and refuses any other source. | |
-| req-compliance-core-exception-edges-4 | Covers Moves To The Instance | Proposed | `COVERS_COMPLIANCE_FINDING` accepts an instance as its source and refuses an exception; `CITES_COMPLIANCE_EVIDENCE` accepts an instance or a finding as its source. | |
+| req-compliance-core-exception-edges-1 | The Sentences Connect | Implemented | Each edge in the table connects its endpoints and carries the dimension above. | |
+| req-compliance-core-exception-edges-2 | Containment Is Only The Grant | Implemented | `GRANTS_COMPLIANCE_EXCEPTION_INSTANCE` is the only edge in `CONTAINMENT_EDGES`; deleting an exception with `cascade="contained"` retires its instances, and deleting an instance leaves the exception, finding, vulnerability and anchors live. | `req-grid-service-delete-cascade`. |
+| req-compliance-core-exception-edges-3 | An Anchor May Be Any Node | Implemented | `SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET` accepts any node as its target from an instance, and refuses a source whose own type forbids it (an exception, a vulnerability). | A source type that declares no outbound edges (a finding) is not refused: the same permission union. A producer keeps to instances as the source. |
+| req-compliance-core-exception-edges-4 | Covers Moves To The Instance | Implemented | `COVERS_COMPLIANCE_FINDING` accepts an instance as its source and refuses an exception; `CITES_COMPLIANCE_EVIDENCE` accepts an instance or a finding as its source. | |
 | req-compliance-core-exception-edges-5 | Old Covers Rows Retired | Proposed | A data migration, separate from the schema migration, retires live `COVERS_COMPLIANCE_FINDING` rows whose source is an exception and touches no other row. | Precedent: migration `0003`. Not released until the consumers are retargeted or shown to have no reader (see above). |
-| req-compliance-core-exception-edges-6 | Plain Identity | Proposed | Every new edge declares `{"discriminators": []}` and a re-sent edge is the same edge. | |
+| req-compliance-core-exception-edges-6 | Plain Identity | Implemented | Every new edge declares `{"discriminators": []}`, so a re-sent edge is the same edge. | Tested as the declaration; edges carry no natural key through the service layer today (ids are assigned), so re-sending through `create_edge` makes a second edge, and the same-edge guarantee is the importer's (Issue# 458 - tap). |
 | req-compliance-core-exception-edges-7 | Anchors Reach The Finding | Backlog | A check that each anchor actually reaches the covered finding along carries or path edges, as the reach runners follow them. | v0 relies on the checker's binding and on the vulnerability match; the topology of who carries a finding is set by the producers, so the path declarations need a design of their own. |
 
 ### Exception Coverage

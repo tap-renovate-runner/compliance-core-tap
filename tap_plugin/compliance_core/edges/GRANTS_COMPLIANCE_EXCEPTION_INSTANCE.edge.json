@@ -1,0 +1,17 @@
+{
+  "slug": "GRANTS_COMPLIANCE_EXCEPTION_INSTANCE__compliance_core",
+  "name": "Grants Compliance Exception Instance",
+  "description": "An exception grants an instance of itself: one application of the decision to one vulnerability within one declared scope. The only containment edge of the exception set: deleting the exception with cascade retires its instances, and deleting an instance leaves the exception live.",
+  "sources": [
+    "compliance_core__compliance_exception"
+  ],
+  "targets": [
+    "compliance_core__compliance_exception_instance"
+  ],
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "exception-instance"
+  }
+}

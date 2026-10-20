@@ -1,0 +1,14 @@
+{
+  "slug": "SCOPED_TO_COMPLIANCE_EXCEPTION_TARGET__compliance_core",
+  "name": "Scoped To Compliance Exception Target",
+  "description": "An exception instance is limited to a place: a scope anchor, such as a package (ecosystem, name, version), an image or an SBOM document. Wildcard target because what a producer's world offers as an anchor is not compliance_core's to name. The anchors of one instance are ANDed and the producer declares how many it meant in anchor_count; an instance with no live anchor covers nothing. That an anchor actually reaches a covered finding is the checker's binding, which compliance_core trusts and does not verify.",
+  "sources": [
+    "compliance_core__compliance_exception_instance"
+  ],
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "exception-instance"
+  }
+}
