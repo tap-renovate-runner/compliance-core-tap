@@ -312,7 +312,8 @@ class TestOtherFindingsAndLimits:
 
     @pytest.mark.spec("req-compliance-core-exception-coverage-9")
     def test_max_results_limits_the_rows(self) -> None:
-        Case(key="1"), Case(key="2"), Case(key="3")
+        for key in ("1", "2", "3"):
+            Case(key=key)
         assert len(finding_exception_coverage(Search(), {"as_of": AS_OF.isoformat(), "max_results": 2}, db_alias="default")["rows"]) == 2
 
     @pytest.mark.spec("req-compliance-core-exception-coverage-9")
