@@ -1047,6 +1047,8 @@ The node carries the default dimension `{"compliance": "search-snapshot"}`. Migr
 
 `rows` is a copy of what the Search returned at one moment, so it is bounded: a thousand rows is a coverage summary or a short list, not an inventory dump. A Search that returns more is truncated, and `row_count` keeps the true size so the loss is visible. Entity-level lists belong to a Search run on demand, not to the snapshot.
 
+**Who can read a snapshot.** A snapshot copies what a Search returned to the collector's actor (`grid.read`) into a node that anyone who can read compliance nodes can read. This spec adds no label propagation, redaction or eligibility check, and the grid's per-node authorization is not verified here, so the audience of a snapshot is the audience of the node, not of the Search it copied. The rule for now is on the subclass author: name only Searches whose rows are suitable for that audience, and put no secret in a Search's input defaults, because `inputs_text` records them. Whether the grid can carry a Search's read restriction onto its snapshots is open (Future).
+
 Snapshots grow without bound at one per Search per run. Retention is deliberately not specified here: at hourly cadence it is 24 nodes per Search per day, which no demo or first deployment will feel, and pruning needs a ruling on what an auditor must be able to read back.
 
 #### Acceptance Criteria
@@ -1065,7 +1067,7 @@ Snapshots grow without bound at one per Search per run. Retention is deliberatel
 
 #### Future
 
-Retention and pruning. A figure derived across snapshots (a trend line, a percent change) is a Search over snapshots, not a field here. Entity-level rows, if an auditor needs to see which entities were uncovered at the time, would be a second node type edged from the snapshot.
+A read restriction carried from the Search onto its snapshots, or a check that a Search is eligible to be snapshotted, if the grid offers one. Retention and pruning. A figure derived across snapshots (a trend line, a percent change) is a Search over snapshots, not a field here. Entity-level rows, if an auditor needs to see which entities were uncovered at the time, would be a second node type edged from the snapshot.
 
 
 ### Search Snapshot Collector Base
