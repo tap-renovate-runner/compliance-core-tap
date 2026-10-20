@@ -179,6 +179,7 @@ layer.
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
 | req-compliance-core-dimension-coverage | [Dimension Coverage Search](#dimension-coverage-search) | Implemented | One generic `module` Search runner, `dimension-coverage`, counts the entities carrying each value of a dimension key, broken down by entity type, which Gryphon cannot group. |
+| req-compliance-core-dimension-mapping | [Dimension Mapping Searches](#dimension-mapping-searches) | Proposed | Two generic `module` Search runners, `dimension-mapping-summary` and `dimension-mapping-entities`, compare what entities carry against a mapping held in the Search's inputs and report each live entity of a mapped type as mapped, unmapped or mapped incorrectly. |
 | req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
 | req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Implemented | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
 | req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Implemented | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
@@ -679,6 +680,82 @@ Tombstoned entities and tombstoned dimension nodes contribute nothing (`tap_grid
 | req-compliance-core-dimension-coverage-9 | Key Without A Node | Implemented | A key with no dimension node answers one row with a null description, no values and total 0. | `::TestCounts::test_a_key_with_no_dimension_node_still_answers` |
 | req-compliance-core-dimension-coverage-10 | Display Strings | Implemented | `values_text` and `breakdown_text` are derived from `values`, one line per value in the same order. | `::TestText` |
 | req-compliance-core-dimension-coverage-11 | Input Validated | Implemented | A missing, blank or non-string `dimension_key` and an `exclude_types` that is not an array of strings are refused with a `ValueError` naming the input. | `::TestInputs` |
+
+### Dimension Mapping Searches
+----
+RID: `req-compliance-core-dimension-mapping`
+
+Status: `Proposed`
+
+`dimension-coverage` (`req-compliance-core-dimension-coverage`) answers "which entities carry each value of this key". It cannot say which entities *should* carry one, so it cannot count the ones that are missing it, and it cannot say that a value is wrong for the kind of thing that carries it. Coverage work needs both. A mapping says, for an entity type, which dimension keys it should carry and which values are acceptable; the two runners here compare the grid against that mapping and put every live entity of a mapped type into one of three states.
+
+**The mapping is data in a Search, not a new node type.** A `Search` is already a first-class grid entity with history (`tap_grid/models.py`, `Search(BaseModel)`), a panel points at it with `USES_SEARCH`, and a module runner receives the Search's `input_schema` defaults as its inputs (`req-compliance-core-dimension-coverage`). So the mapping is the `mappings` input of a Search node: it is versioned with the node, it is the thing a page points at, and compliance_core needs no model and no migration for it. A dedicated mapping node can replace the input later without changing the states or the output below.
+
+Like `findings-reached-count` and `findings-reached-list`, the work is two runners over one comparison, because a panel binds one row shape per Search: `dimension-mapping-summary` returns one row per mapping row, and `dimension-mapping-entities` returns one row per entity. Both are `module` Search runners (`req-grid-search-module`), in `tap_plugin/compliance_core/searches/dimension_mapping.py`, registered in the manifest `[searches]` table and under the read rules Gryphon applies (`tap_grid.gryphon.read_scope`: a tombstoned entity contributes nothing; the caller's `db_alias` for every query). Gryphon cannot write the query for the reason `dimension-coverage` records: it needs a count grouped by a dimension value taken from a Search input.
+
+#### Implementation
+
+The runners know no entity type, dimension key or value. Their inputs come from the Search's `input_schema` defaults:
+
+| input | meaning |
+| --- | --- |
+| `mappings` | Required. A non-empty array of mapping rows, below. |
+| `status` | `dimension-mapping-entities` only. Optional; one of `mapped`, `unmapped`, `mapped_incorrectly`. When set, only entities in that state are returned. |
+| `max_entities` | `dimension-mapping-entities` only. Optional integer, default `1000`, at most `5000`. The most entity rows returned. |
+
+A mapping row:
+
+| field | meaning |
+| --- | --- |
+| `entity_type` | The `entity_type` of the entities that should carry the keys (non-empty string). |
+| `keys` | A non-empty array of `{key, allowed}`: `key` is a dimension key such as `dataclass.action`; `allowed` is a non-empty array of strings, the values this row accepts for it. |
+| `match` | Optional, `any` or `all`, default `all`. `any`: carrying one listed key correctly is enough (a flow carries `dataclass.customer` or `dataclass.infra`). `all`: every listed key must be carried correctly. With one key the two are the same. |
+
+The states, for one live entity of the row's `entity_type`, where a key is *present* when the entity's `dimensions` map has it and *correct* when it is present with a value in that key's `allowed` list:
+
+- `mapped`: with `match: any`, at least one listed key is correct; with `match: all`, every listed key is correct.
+- `mapped_incorrectly`: the entity is not `mapped` and at least one listed key is present with a value that is not allowed.
+- `unmapped`: neither of the above. With `any`, no listed key is present; with `all`, at least one listed key is absent and none holds a disallowed value.
+
+The denominator of a row is every live entity of its `entity_type`. A value is compared exactly: no case folding, no prefix, no dotted-path rule. A stored value that is not a string is never allowed. An entity that matches two rows is counted in each; rows do not interact. `null` is unobserved and an absent key is unmapped, as everywhere on the grid; a value that says "this does nothing with data" is a real value in the dictionary (for example `dataclass.action = none`) and an allowed value like any other.
+
+`dimension-mapping-summary` returns one row per mapping row, in input order: `entity_type`, `label` (the type's registered name, else the type, as in `dimension-coverage`), `keys_text` (`<key>: <allowed values joined by ", ">` per key, one line each), `match`, `denominator`, `mapped`, `unmapped`, `mapped_incorrectly` and `percent_mapped` (`mapped` over `denominator` as a number from 0 to 100 with one decimal, `null` when the denominator is 0). The three counts add up to the denominator.
+
+`dimension-mapping-entities` returns one row per entity: `entity_id`, `entity_type`, `label`, `name`, `status`, `found` (an object of the listed keys the entity carries and their values), `found_text` (`<key> = <value>` per line, `not set` for none) and `allowed_text` (the row's `keys_text`). Order: `mapped_incorrectly`, then `unmapped`, then `mapped`; within a state by entity type, then name, then `entity_id`. When more entities match than `max_entities`, the first `max_entities` in that order are returned and `warnings` says how many were left out; the summary is never truncated.
+
+An allowed value with no dimension node `<key>.<value>`, and a key with no dimension node, are reported in `warnings` by key and value; they do not fail the run and do not change any state. The dictionary is read the way `dimension-coverage` reads it, and the two share that read.
+
+#### Development
+
+The state names are the three the owner asked for ("mapped, unmapped, mapped incorrectly"). `mapped_incorrectly` is kept apart from `unmapped` because they are different problems: a missing tag is work not done, a wrong tag is work done wrongly, and an auditor asks about each. The mapping is not a count of what exists, so a type with nothing on the grid reports a zero denominator and a null percentage, not 100%.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-dimension-mapping-1 | Registered From The Manifest | Proposed | Both runners are declared in `[searches]` and registered in the search runner registry at plugin load. | |
+| req-compliance-core-dimension-mapping-2 | Envelope Shape | Proposed | Each result passes through the search service with the Search's `input_schema` defaults applied, has empty `nodes` and `edges`, and every value in `rows` survives `json.dumps`. | |
+| req-compliance-core-dimension-mapping-3 | Mapping Comes From The Input | Proposed | No entity type, dimension key or value is named in the runner code; the mapping is read from `mappings` alone. | |
+| req-compliance-core-dimension-mapping-4 | Mapping Validated | Proposed | A missing or empty `mappings`, a row without `entity_type`, a row with no `keys`, a key without `key` or with an empty `allowed`, a `match` other than `any` or `all`, a `status` other than the three states, and a `max_entities` that is not an integer from 1 to 5000 are refused with a `ValueError` naming the input. | |
+| req-compliance-core-dimension-mapping-5 | Denominator Is Live Entities Of The Type | Proposed | A row's denominator is the count of live entities whose `entity_type` is the row's; a tombstoned entity contributes nothing and an entity of another type is not counted. | |
+| req-compliance-core-dimension-mapping-6 | Match All | Proposed | With `match: all`, an entity is `mapped` only when every listed key is present with an allowed value, `mapped_incorrectly` when it is not mapped and some listed key holds a disallowed value, and `unmapped` otherwise. | |
+| req-compliance-core-dimension-mapping-7 | Match Any | Proposed | With `match: any`, an entity is `mapped` when at least one listed key holds an allowed value, `mapped_incorrectly` when it is not mapped and some listed key holds a disallowed value, and `unmapped` when no listed key is present. | |
+| req-compliance-core-dimension-mapping-8 | Exact Match, Strings Only | Proposed | A value is allowed only when it equals an `allowed` string exactly; a prefix, a different case and a stored value that is not a string are not allowed. | |
+| req-compliance-core-dimension-mapping-9 | Counts Add Up | Proposed | For every summary row, `mapped + unmapped + mapped_incorrectly` equals `denominator`, and `percent_mapped` is `mapped` over `denominator` as a number from 0 to 100 with one decimal. | |
+| req-compliance-core-dimension-mapping-10 | Empty Type Is Honest | Proposed | A row whose type has no live entities is listed with `denominator` 0, all three counts 0 and a `null` `percent_mapped`. | |
+| req-compliance-core-dimension-mapping-11 | Rows Are Independent | Proposed | Two mapping rows for the same type, or two rows naming the same key, are counted separately and an entity can be in both. | |
+| req-compliance-core-dimension-mapping-12 | Entity Rows | Proposed | `dimension-mapping-entities` returns one row per entity of a mapped type with `entity_id`, `entity_type`, `label`, `name`, `status`, `found`, `found_text` and `allowed_text`, ordered `mapped_incorrectly`, `unmapped`, `mapped`, then type, name and `entity_id`. | |
+| req-compliance-core-dimension-mapping-13 | Status Filter | Proposed | With the `status` input set, only entities in that state are returned; with it unset all three states are. | One Search per state gives a page its three tables. |
+| req-compliance-core-dimension-mapping-14 | Bounded Entity Rows | Proposed | No more than `max_entities` rows are returned, the omitted number is in `warnings`, and the summary counts are unaffected. | |
+| req-compliance-core-dimension-mapping-15 | Undeclared Names Warn | Proposed | An allowed value with no `<key>.<value>` dimension node and a key with no dimension node are listed in `warnings` and do not fail the run or change a state. | |
+
+#### Future
+
+- **Stored reports over time.** A scheduled run that writes a snapshot of the summary, so coverage can be read as a series, is a separate requirement and builds on this comparison.
+- **Exemptions.** Removing an entity from a denominator by an approved exception follows the exception model (`req-compliance-core-exception`); it is not specified here.
+- **A dedicated mapping node.** If mappings need their own identity, review or rows that other things point at, a node can replace the `mappings` input.
+- **A "does nothing" value on other axes.** `dataclass.action = none` is defined with its vocabulary; whether the customer and infra axes get one is open.
+
 
 ### Finding Detection Time
 ----
