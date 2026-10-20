@@ -43,6 +43,7 @@ vulnerability-components = "tap_plugin.compliance_core.searches.cross_tabs.vulne
 component-severity = "tap_plugin.compliance_core.searches.cross_tabs.component_severity"
 findings-reached-count = "tap_plugin.compliance_core.searches.reach.findings_reached_count"
 findings-reached-list = "tap_plugin.compliance_core.searches.reach.findings_reached_list"
+dimension-coverage = "tap_plugin.compliance_core.searches.dimension_coverage.dimension_coverage"
 
 [[boot.records]]
 name = "ci"
