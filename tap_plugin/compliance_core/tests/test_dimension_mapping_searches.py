@@ -244,6 +244,13 @@ class TestEntities:
         assert [r["status"] for r in out["rows"]] == ["mapped_incorrectly", "mapped_incorrectly"]
         assert summary()[0]["denominator"] == 7
 
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-14")
+    def test_repeated_mapping_rows_are_counted_exactly_and_still_capped(self) -> None:
+        build()
+        out = dimension_mapping_entities(Search(), {"mappings": [ROW, ROW, ROW], "max_entities": 1}, db_alias="default")
+        assert len(out["rows"]) == 1
+        assert out["warnings"]["entities_omitted"] == ["20 entity rows were left out; max_entities is 1"]  # 3 x 7 - 1
+
     @pytest.mark.spec("req-compliance-core-dimension-mapping-5")
     def test_a_tombstoned_entity_is_not_listed(self) -> None:
         nodes = build()

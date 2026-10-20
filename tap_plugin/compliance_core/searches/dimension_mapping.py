@@ -25,6 +25,7 @@ dimensions are compared as the JSON the entity stores, so a number or an array i
 
 from __future__ import annotations
 
+import heapq
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -136,15 +137,21 @@ def _value_text(value: Any) -> str:
 
 
 def _warnings(rows: list[MappingRow], *, db_alias: str) -> dict[str, list[str]]:
-    """Keys and allowed values with no dimension node: reported, never failed on, and they change no state."""
-    keys: set[str] = set()
-    values: set[str] = set()
+    """Keys and allowed values with no dimension node: reported, never failed on, and they change no state.
+
+    The dictionary is read once per distinct key, whatever the number of mapping rows that name it.
+    """
+    allowed_by_key: dict[str, set[str]] = {}
     for row in rows:
         for key, allowed in row.keys:
-            description, declared = read_dictionary(key, db_alias=db_alias)
-            if description is None:
-                keys.add(key)
-            values.update(f"{key} = {value}" for value in allowed if value not in declared)
+            allowed_by_key.setdefault(key, set()).update(allowed)
+    keys: set[str] = set()
+    values: set[str] = set()
+    for key, allowed in allowed_by_key.items():
+        description, declared = read_dictionary(key, db_alias=db_alias)
+        if description is None:
+            keys.add(key)
+        values.update(f"{key} = {value}" for value in allowed if value not in declared)
     out: dict[str, list[str]] = {}
     if keys:
         out["undeclared_keys"] = sorted(keys)
@@ -196,14 +203,17 @@ def dimension_mapping_entities(
     req-compliance-core-dimension-mapping
     """
     mapping, wanted, max_entities = _entity_inputs(inputs)
-    rows: list[dict[str, Any]] = []
-    for index, row in enumerate(mapping):
-        for pk, name, dimensions in _entities(row.entity_type, db_alias=db_alias):
-            state, found = classify(dimensions, row)
-            if wanted is not None and state != wanted:
-                continue
-            rows.append(
-                {
+    seen = 0
+
+    def stream() -> Any:
+        nonlocal seen
+        for index, row in enumerate(mapping):
+            for pk, name, dimensions in _entities(row.entity_type, db_alias=db_alias):
+                state, found = classify(dimensions, row)
+                if wanted is not None and state != wanted:
+                    continue
+                seen += 1
+                yield (_STATE_ORDER[state], row.entity_type, name, str(pk), index), {
                     "mapping": index,
                     "entity_id": str(pk),
                     "entity_type": row.entity_type,
@@ -214,9 +224,12 @@ def dimension_mapping_entities(
                     "found_text": "\n".join(f"{k} = {_value_text(v)}" for k, v in found.items()) or "not set",
                     "allowed_text": row.keys_text,
                 }
-            )
-    rows.sort(key=lambda r: (_STATE_ORDER[r["status"]], r["entity_type"], r["name"], r["entity_id"], r["mapping"]))
+
+    # Only the first max_entities rows are kept while the entities stream past, so memory is bounded by the cap, not by
+    # the grid or by the number of mapping rows; the count of the rest is exact.
+    kept = heapq.nsmallest(max_entities, stream(), key=lambda item: item[0])
+    rows = [row for _key, row in kept]
     warnings = _warnings(mapping, db_alias=db_alias)
-    if len(rows) > max_entities:
-        warnings["entities_omitted"] = [f"{len(rows) - max_entities} entity rows were left out; max_entities is {max_entities}"]
-    return _envelope(rows[:max_entities], warnings)
+    if seen > max_entities:
+        warnings["entities_omitted"] = [f"{seen - max_entities} entity rows were left out; max_entities is {max_entities}"]
+    return _envelope(rows, warnings)
