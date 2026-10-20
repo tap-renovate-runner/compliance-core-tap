@@ -194,6 +194,7 @@ class TestSubclassContract:
             {"SOURCE": "s", "SEARCH_ENTITY_IDS": ()},
             {"SOURCE": "s", "SEARCH_ENTITY_IDS": [str(uuid.uuid4())]},
             {"SOURCE": "s", "SEARCH_ENTITY_IDS": ("not-a-uuid",)},
+            {"SOURCE": "s", "SEARCH_ENTITY_IDS": ("01a15b2f-df3b-7569-bf22-9ead3f816b84", "01a15b2f-df3b-7569-bf22-9ead3f816b84")},
             {"SOURCE": "s", "SEARCH_ENTITY_IDS": (7,)},
             {"SOURCE": "s", "SEARCH_ENTITY_IDS": (str(uuid.uuid4()),), "MAX_ROWS": 1001},
             {"SOURCE": "s", "SEARCH_ENTITY_IDS": (str(uuid.uuid4()),), "MAX_ROWS": 0},
@@ -206,6 +207,21 @@ class TestSubclassContract:
     @pytest.mark.spec("req-compliance-core-search-snapshot-collector-2")
     def test_a_good_subclass_is_accepted(self) -> None:
         assert _subclass((str(uuid.uuid4()),)).SOURCE == "tests"
+
+
+class TestDisplayName:
+    @pytest.mark.spec("req-compliance-core-search-snapshot-collector-10")
+    def test_a_long_search_name_gives_way_and_the_time_is_kept(self) -> None:
+        when = "2026-10-20T12:00:00.000000Z"
+        short = collector_module._display_name("coverage", when)
+        assert short == f"coverage @ {when}"
+        long = collector_module._display_name("n" * 400, when)
+        assert len(long) == 255 and long.endswith(f" @ {when}")
+
+    @pytest.mark.spec("req-compliance-core-search-snapshot-1")
+    def test_the_model_refuses_a_name_over_255(self) -> None:
+        assert not _ok({**GOOD, "name": "n" * 256})
+        assert _ok({**GOOD, "snapshot_key": "ok", "name": "n" * 255})
 
 
 class TestRun:

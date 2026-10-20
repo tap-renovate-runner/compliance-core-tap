@@ -34,6 +34,7 @@ MAX_ROWS = 1000
 MAX_PROPERTIES = 50
 MAX_NAME = 128
 MAX_STRING = 4096
+MAX_DISPLAY = 255
 
 _SITE_RUN_STARTED = "4992"
 _SITE_BAD_SEARCH = "8e68"
@@ -54,6 +55,12 @@ def _canonical(value: Any) -> str:
 def _utc_text(moment: datetime) -> str:
     """UTC ISO 8601 to the microsecond: the form a snapshot key and `observed_at` both use."""
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _display_name(search_name: str, when: str) -> str:
+    """`<search name> @ <time>` within the model's 255 characters: the Search's name gives way, the time never does."""
+    suffix = f" @ {when}"
+    return f"{search_name[: MAX_DISPLAY - len(suffix)]}{suffix}"
 
 
 def _scalar(value: Any) -> tuple[Any, bool]:
@@ -83,6 +90,8 @@ class SearchSnapshotCollector(CollectorBase):
         ids = cls.SEARCH_ENTITY_IDS
         if not isinstance(ids, tuple) or not ids:
             raise TypeError(f"{cls.__name__}.SEARCH_ENTITY_IDS must be a non-empty tuple of UUID strings")
+        if len(set(ids)) != len(ids):
+            raise TypeError(f"{cls.__name__}.SEARCH_ENTITY_IDS names a Search twice, which would write one key twice")
         for item in ids:
             try:
                 uuid.UUID(item)
@@ -119,11 +128,11 @@ class SearchSnapshotCollector(CollectorBase):
                     "entity": {
                         "ref": ref,
                         "entity_type": SNAPSHOT_TYPE,
-                        "name": f"{search.name} @ {when}",
+                        "name": _display_name(search.name, when),
                         "dimensions": {"compliance": "search-snapshot"},
                     },
                     "node": {
-                        "name": f"{search.name} @ {when}",
+                        "name": _display_name(search.name, when),
                         "source": self.SOURCE,
                         "snapshot_key": f"{search_id}@{when}",
                         "search_name": search.name,

@@ -25,10 +25,10 @@ _ROWS_SCHEMA: dict[str, Any] = {
     },
 }
 _FIELD_SCHEMAS: dict[str, Any] = {
-    "name": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1, "maxLength": 255},
     "source": {"type": "string", "minLength": 1, "maxLength": 64},
     "snapshot_key": {"type": "string", "minLength": 1, "maxLength": 512},
-    "search_name": {"type": "string"},
+    "search_name": {"type": "string", "maxLength": 255},
     "observed_at": {"type": "string", "format": "date-time", "pattern": r"^\d{4}-\d{2}-\d{2}T"},
     "row_count": {"type": "integer", "minimum": 0},
     "rows": _ROWS_SCHEMA,
