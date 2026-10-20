@@ -9,6 +9,7 @@ from tap_plugin.compliance_core.models.compliance_exception_instance import Comp
 from tap_plugin.compliance_core.models.compliance_finding import ComplianceFinding
 from tap_plugin.compliance_core.models.compliance_scan_run import ComplianceScanRun
 from tap_plugin.compliance_core.models.compliance_scanner import ComplianceScanner
+from tap_plugin.compliance_core.models.compliance_search_snapshot import ComplianceSearchSnapshot
 from tap_plugin.compliance_core.models.compliance_vulnerability import ComplianceVulnerability
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "ComplianceFinding",
     "ComplianceScanRun",
     "ComplianceScanner",
+    "ComplianceSearchSnapshot",
     "ComplianceVulnerability",
 ]

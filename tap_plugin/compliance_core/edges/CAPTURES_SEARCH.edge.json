@@ -1,0 +1,17 @@
+{
+  "slug": "CAPTURES_SEARCH__compliance_core",
+  "name": "Captures Search",
+  "description": "A search snapshot captures one run of a Search: the node holds the rows that run returned, and this edge names the Search it ran. The snapshot is written once and the edge is never moved, so the Search can be renamed or edited and its earlier runs still point at it.",
+  "sources": [
+    "compliance_core__compliance_search_snapshot"
+  ],
+  "targets": [
+    "search"
+  ],
+  "identity": {
+    "discriminators": []
+  },
+  "default_dimensions": {
+    "compliance": "search-snapshot"
+  }
+}
