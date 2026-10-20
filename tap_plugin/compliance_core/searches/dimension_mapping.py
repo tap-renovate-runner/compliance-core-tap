@@ -39,6 +39,8 @@ from .dimension_dictionary import read_dictionary
 MAX_MAPPING_ROWS = 50
 MAX_KEYS = 20
 MAX_ALLOWED = 100
+MAX_NAME = 128  # an entity type or a dimension key
+MAX_VALUE = 256  # one allowed value
 DEFAULT_MAX_ENTITIES = 1000
 MAX_ENTITIES = 5000
 STATES = ("mapped", "unmapped", "mapped_incorrectly")
@@ -65,8 +67,8 @@ def _row(index: int, raw: Any) -> MappingRow:
     where = f"mappings[{index}]"
     if not isinstance(raw, dict):
         raise ValueError(f"{where} must be an object")
-    if not _non_empty_str(raw.get("entity_type")):
-        raise ValueError(f"{where}.entity_type must be a non-empty string")
+    if not _non_empty_str(raw.get("entity_type")) or len(raw["entity_type"]) > MAX_NAME:
+        raise ValueError(f"{where}.entity_type must be a non-empty string of at most {MAX_NAME} characters")
     keys = raw.get("keys")
     if not isinstance(keys, list) or not keys:
         raise ValueError(f"{where}.keys must be a non-empty array")
@@ -75,13 +77,15 @@ def _row(index: int, raw: Any) -> MappingRow:
     parsed: list[tuple[str, tuple[str, ...]]] = []
     for position, item in enumerate(keys):
         at = f"{where}.keys[{position}]"
-        if not isinstance(item, dict) or not _non_empty_str(item.get("key")):
-            raise ValueError(f"{at}.key must be a non-empty string")
+        if not isinstance(item, dict) or not _non_empty_str(item.get("key")) or len(item["key"]) > MAX_NAME:
+            raise ValueError(f"{at}.key must be a non-empty string of at most {MAX_NAME} characters")
         allowed = item.get("allowed")
         if not isinstance(allowed, list) or not allowed or not all(isinstance(v, str) for v in allowed):
             raise ValueError(f"{at}.allowed must be a non-empty array of strings")
         if len(allowed) > MAX_ALLOWED:
             raise ValueError(f"{at}.allowed has {len(allowed)} values; at most {MAX_ALLOWED} are allowed")
+        if any(len(v) > MAX_VALUE for v in allowed):
+            raise ValueError(f"{at}.allowed has a value longer than {MAX_VALUE} characters")
         parsed.append((item["key"], tuple(allowed)))
     match = raw.get("match", "all")
     if match not in ("any", "all"):
@@ -203,6 +207,7 @@ def dimension_mapping_entities(
     req-compliance-core-dimension-mapping
     """
     mapping, wanted, max_entities = _entity_inputs(inputs)
+    texts = [row.keys_text for row in mapping]  # one string per mapping row, shared by every entity row of it
     seen = 0
 
     def stream() -> Any:
@@ -222,7 +227,7 @@ def dimension_mapping_entities(
                     "status": state,
                     "found": found,
                     "found_text": "\n".join(f"{k} = {_value_text(v)}" for k, v in found.items()) or "not set",
-                    "allowed_text": row.keys_text,
+                    "allowed_text": texts[index],
                 }
 
     # Only the first max_entities rows are kept while the entities stream past, so memory is bounded by the cap, not by
