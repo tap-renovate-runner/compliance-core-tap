@@ -206,6 +206,41 @@ class TestList:
         assert rows[-1]["name"] == "CVE-NULL | CVSS n/a" and rows[-1]["cvss"] is None
         assert rows[0]["id"] == "CVE-9"
 
+    @pytest.mark.spec("req-compliance-core-reach-10")
+    def test_component_names_the_carrier_and_leaves_the_row_count_alone(self) -> None:
+        g = Graph()
+        rows = [r for r in listing() if r["entity_id"] == str(g.s1.pk)]
+        assert len(rows) == 5
+        by_finding = {r["finding_id"]: r["component"] for r in rows}
+        assert by_finding[str(g.f["fA1"].pk)] == "carrierA"
+        assert by_finding[str(g.f["fB1"].pk)] == "carrierB"
+        json.dumps(rows)
+
+    @pytest.mark.spec("req-compliance-core-reach-11")
+    def test_component_joins_sorted_names_and_caps_with_k_more(self) -> None:
+        g = Graph()
+        rows = {r["finding_id"]: r["component"] for r in listing() if r["entity_id"] == str(g.s1.pk)}
+        assert rows[str(g.f["fShared"].pk)] == "carrierA, carrierB"  # carried by two carriers, still one row
+        for name in ("carrierD", "carrierE", "carrierF"):
+            extra = _node(f"{CC}exception", {"name": name})
+            create_edge(g.s1, extra, RUNS_AT)
+            create_edge(extra, g.f["fShared"], CARRIES)
+        capped = {r["finding_id"]: r["component"] for r in listing() if r["entity_id"] == str(g.s1.pk)}
+        assert capped[str(g.f["fShared"].pk)] == "carrierA, carrierB, carrierD +2 more"
+        assert len([r for r in listing() if r["entity_id"] == str(g.s1.pk)]) == 5
+
+    @pytest.mark.spec("req-compliance-core-reach-12")
+    def test_an_unnamed_carrier_gives_an_empty_component_never_none(self) -> None:
+        g = Graph()
+        Entity.objects.filter(pk=g.car["carrierC"].pk).update(name="")
+        rows = [r for r in listing() if r["entity_id"] == str(g.s2.pk)]
+        assert [r["component"] for r in rows] == [""]
+        Entity.objects.filter(pk=g.car["carrierB"].pk).update(name="")
+        shared = {r["finding_id"]: r["component"] for r in listing() if r["entity_id"] == str(g.s1.pk)}
+        assert shared[str(g.f["fShared"].pk)] == "carrierA"  # the unnamed one adds nothing
+        assert shared[str(g.f["fB1"].pk)] == ""
+        assert all(isinstance(v, str) and "None" not in v for v in shared.values())
+
     @pytest.mark.spec("req-compliance-core-reach-8")
     def test_max_results_limits_the_rows(self) -> None:
         Graph()

@@ -22,7 +22,10 @@ carriers, counts once for the root.
 ``findings-reached-count`` returns one row per root with at least one finding: ``entity_id`` (the root), ``count``.
 ``findings-reached-list`` returns one row per counted finding: ``entity_id`` (the root), ``name`` (the display
 text ``<id> | CVSS <score> | <title>``), ``id``, ``cvss``, ``title`` and ``finding_id``; a finding that concerns
-several vulnerabilities is listed once, under its highest-scored vulnerability. Order: highest ``cvss`` first
+several vulnerabilities is listed once, under its highest-scored vulnerability. ``component`` is the display name of
+the carrier(s) the finding was reached through: distinct names sorted, joined by ``", "``, at most ``MAX_COMPONENT_NAMES``
+of them followed by ``"+k more"`` for the rest; ``""`` when no carrier has a name. It never changes the row count.
+Order: highest ``cvss`` first
 (unscored last), then ``id``, then ``finding_id``. The badge population and info window of tap_viz read exactly
 these fields: the first needs ``entity_id`` and ``count``, the second ``entity_id`` and ``name`` (and ``id`` for a
 row link).
@@ -48,6 +51,7 @@ MAX_PATHS = 8
 MAX_PATH_LENGTH = 8
 DEFAULT_MAX_RESULTS = 1000
 MAX_RESULTS = 5000
+MAX_COMPONENT_NAMES = 3
 _EDGE_TYPE = re.compile(r"^[A-Za-z0-9_]{1,128}$")
 
 
@@ -122,13 +126,16 @@ def _carriers(root_type: str, paths: list[list[str]], entity_id: str | None, *, 
     return carriers
 
 
-def _findings(carriers: dict[str, set[str]], *, db_alias: str) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """``(by_root, concerns)``: per root the open findings its carriers carry that concern a live vulnerability, and
-    ``concerns`` maps each such finding to the vulnerabilities it concerns."""
+def _findings(
+    carriers: dict[str, set[str]], *, db_alias: str
+) -> tuple[dict[str, set[str]], dict[str, set[str]], dict[tuple[str, str], set[str]]]:
+    """``(by_root, concerns, via)``: per root the open findings its carriers carry that concern a live vulnerability,
+    ``concerns`` mapping each such finding to the vulnerabilities it concerns, and ``via`` mapping each
+    ``(root, finding)`` to the carriers it was reached through."""
     scope = read_scope.DEFAULT_SCOPE
     wanted = sorted({c for entities in carriers.values() for c in entities})
     if not wanted:
-        return {}, {}
+        return {}, {}, {}
     carried: dict[str, set[str]] = defaultdict(set)
     for carrier, finding in (
         read_scope.edge_relation(scope, db_alias=db_alias)
@@ -155,11 +162,23 @@ def _findings(carriers: dict[str, set[str]], *, db_alias: str) -> tuple[dict[str
         ):
             concerns[str(finding)].add(str(vuln))
     by_root: dict[str, set[str]] = {}
+    via: dict[tuple[str, str], set[str]] = defaultdict(set)
     for root, entities in carriers.items():
-        found = {finding for carrier in entities for finding in carried.get(carrier, ()) if finding in concerns}
-        if found:
-            by_root[root] = found
-    return by_root, dict(concerns)
+        for carrier in entities:
+            for finding in carried.get(carrier, ()):
+                if finding in concerns:
+                    by_root.setdefault(root, set()).add(finding)
+                    via[(root, finding)].add(carrier)
+    return by_root, dict(concerns), dict(via)
+
+
+def _component(names: set[str]) -> str:
+    """Distinct carrier names sorted and joined; past ``MAX_COMPONENT_NAMES`` the rest read ``+k more``."""
+    ordered = sorted(names)
+    text = ", ".join(ordered[:MAX_COMPONENT_NAMES])
+    if len(ordered) > MAX_COMPONENT_NAMES:
+        text += f" +{len(ordered) - MAX_COMPONENT_NAMES} more"
+    return text
 
 
 def findings_reached_count(
@@ -170,7 +189,7 @@ def findings_reached_count(
     req-compliance-core-reach-count
     """
     root_type, paths, entity_id, _ = _inputs(inputs)
-    by_root, _ = _findings(_carriers(root_type, paths, entity_id, db_alias=db_alias), db_alias=db_alias)
+    by_root, _, _ = _findings(_carriers(root_type, paths, entity_id, db_alias=db_alias), db_alias=db_alias)
     rows = [{"entity_id": root, "count": len(found)} for root, found in sorted(by_root.items())]
     return _envelope(rows)
 
@@ -179,13 +198,23 @@ def findings_reached_list(
     search: Search, inputs: dict[str, Any], *, db_alias: str, layer: str = "full"
 ) -> dict[str, Any]:
     """One row per counted finding, highest CVSS first: ``entity_id`` (the root), ``name``, ``id``, ``cvss``,
-    ``title``, ``finding_id``. ``name`` is ``<id> | CVSS <score or n/a> | <title>``; at most ``max_results`` rows.
+    ``title``, ``finding_id``, ``component``. ``name`` is ``<id> | CVSS <score or n/a> | <title>``; ``component`` is the
+    carrier name(s), up to ``MAX_COMPONENT_NAMES`` then ``+k more`` (``""`` when unnamed); at most ``max_results`` rows.
 
     req-compliance-core-reach-list
     """
     root_type, paths, entity_id, max_results = _inputs(inputs)
     scope = read_scope.DEFAULT_SCOPE
-    by_root, concerns = _findings(_carriers(root_type, paths, entity_id, db_alias=db_alias), db_alias=db_alias)
+    by_root, concerns, via = _findings(_carriers(root_type, paths, entity_id, db_alias=db_alias), db_alias=db_alias)
+    carrier_ids = sorted({c for cs in via.values() for c in cs})
+    carrier_names: dict[str, str] = {}
+    if carrier_ids:
+        carrier_names = {
+            str(pk): name or ""
+            for pk, name in read_scope.node_relation(scope, None, db_alias=db_alias)
+            .filter(pk__in=carrier_ids)
+            .values_list("pk", "name")
+        }
     vuln_ids = sorted({v for vs in concerns.values() for v in vs})
     details: dict[str, tuple[str, str, float | None]] = {}
     if vuln_ids:
@@ -210,6 +239,9 @@ def findings_reached_list(
                     "cvss": cvss,
                     "title": title,
                     "finding_id": finding,
+                    "component": _component(
+                        {n for c in via[(root, finding)] if (n := carrier_names.get(c, "").strip())}
+                    ),
                 }
             )
     rows.sort(key=lambda r: (-(r["cvss"] if r["cvss"] is not None else -1.0), r["id"], r["finding_id"]))

@@ -566,9 +566,9 @@ The runners know no other plugin's type names. Their inputs come from the Search
 | runner | rows |
 | --- | --- |
 | `findings-reached-count` | One row per root with at least one counted finding: `entity_id` (the root), `count` (int). |
-| `findings-reached-list` | One row per counted finding: `entity_id` (the root), `name` (`<id> \| CVSS <score or n/a> \| <title>`), `id` (the vulnerability's `vuln_id`), `cvss`, `title`, `finding_id`. A finding that concerns several vulnerabilities is listed once, under its highest-scored one. Order: `cvss` descending (unscored last), `id`, `finding_id`. |
+| `findings-reached-list` | One row per counted finding: `entity_id` (the root), `name` (`<id> \| CVSS <score or n/a> \| <title>`), `id` (the vulnerability's `vuln_id`), `cvss`, `title`, `finding_id`, `component` (the display name of the carrier(s) the finding was reached through: distinct names sorted and joined with `, `, at most 3 followed by ` +k more`, `""` when no carrier has a name). A finding that concerns several vulnerabilities is listed once, under its highest-scored one. Order: `cvss` descending (unscored last), `id`, `finding_id`. |
 
-The tap_viz status badge population reads `entity_id` and `count`; its info window reads `entity_id` and `name`, and `id` for a row link (`row_url_template`).
+The tap_viz status badge population reads `entity_id` and `count`; its info window reads `entity_id` and `name`, and `id` for a row link (`row_url_template`), plus any further row field a window column names (`component`, for example).
 
 #### Acceptance Criteria
 
@@ -583,6 +583,9 @@ The tap_viz status badge population reads `entity_id` and `count`; its info wind
 | req-compliance-core-reach-7 | List Rows | Implemented | One row per counted finding, highest `cvss` first, named `<id> \| CVSS <score> \| <title>`; a finding concerning two vulnerabilities is listed once under the higher score; an unscored one reads `n/a` and sorts last. | `::TestList` |
 | req-compliance-core-reach-8 | Result Limit | Implemented | `max_results` bounds the rows of `findings-reached-list`. | `::TestList::test_max_results_limits_the_rows` |
 | req-compliance-core-reach-9 | Input Validated | Implemented | A missing or non-string `root_type`, missing, empty or malformed `paths`, more than 8 chains, a chain longer than 8 edges, a non-string `entity_id` and an out-of-range `max_results` are refused with a `ValueError` naming the input. | `::TestInputs` |
+| req-compliance-core-reach-10 | Component Field | Implemented | Each list row carries `component`, the name of the carrier through which its finding was reached; the finding is still one row, so the row count is unchanged. | `::TestList::test_component_names_the_carrier_and_leaves_the_row_count_alone` |
+| req-compliance-core-reach-11 | Component Join, Order And Cap | Implemented | A finding reached through several carriers reads their distinct names sorted and joined with `, `; past 3 names the rest read `+k more`. | `::TestList::test_component_joins_sorted_names_and_caps_with_k_more` |
+| req-compliance-core-reach-12 | Unnamed Carrier | Implemented | A carrier with no name contributes nothing to `component`; with no named carrier it is `""`, never `None` or `"None"`. | `::TestList::test_an_unnamed_carrier_gives_an_empty_component_never_none` |
 
 ### Naming Discipline
 ----
