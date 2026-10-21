@@ -179,7 +179,7 @@ layer.
 | req-compliance-core-searches | [Vulnerability Cross-Tab Searches](#vulnerability-cross-tab-searches) | Implemented | Two `module` Search runners, `vulnerability-components` and `component-severity`, return table rows by ORM aggregation under the read rules Gryphon applies. |
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
 | req-compliance-core-dimension-coverage | [Dimension Coverage Search](#dimension-coverage-search) | Implemented | One generic `module` Search runner, `dimension-coverage`, counts the entities carrying each value of a dimension key, broken down by entity type, which Gryphon cannot group. |
-| req-compliance-core-dimension-mapping | [Dimension Mapping Searches](#dimension-mapping-searches) | Implemented | Two generic `module` Search runners, `dimension-mapping-summary` and `dimension-mapping-entities`, compare what entities carry against a mapping held in the Search's inputs and report each live entity of a mapped type as mapped, unmapped or mapped incorrectly. |
+| req-compliance-core-dimension-mapping | [Dimension Mapping Searches](#dimension-mapping-searches) | Implemented | Two generic `module` Search runners, `dimension-mapping-summary` and `dimension-mapping-entities`, compare what entities carry against a mapping held in the Search's inputs and report each live entity of a mapped type as mapped, unmapped or mapped incorrectly. A mapping row may name a group of entity types, a key may accept any present value, and the summary may report one row per value of a grouping dimension (the inventory category). |
 | req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
 | req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Implemented | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
 | req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Implemented | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
@@ -194,6 +194,7 @@ layer.
 | req-compliance-core-nongoals | [v0 Non-Goals](#v0-non-goals) | Implemented | `ksi_*` and `vdr_*` stay in fedramp; no collector; no regime logic; generic `component` deferred. |
 | req-compliance-core-search-snapshot | [Search Snapshot Modeling](#search-snapshot-modeling) | Implemented | `compliance_search_snapshot`: one run of one Search, with its result rows held inside the node, keyed by the Search and the run time, and an edge to the Search it ran. |
 | req-compliance-core-search-snapshot-collector | [Search Snapshot Collector Base](#search-snapshot-collector-base) | Implemented | `SearchSnapshotCollector`: an abstract collector that runs the Searches a subclass names and writes one snapshot per Search per run. compliance_core registers none. |
+| req-compliance-core-search-snapshot-series | [Search Snapshot Series](#search-snapshot-series) | Proposed | The `search-snapshot-series` `module` Search runner: the rows of a Search's snapshots read back as one row per snapshot time and series, with a plain-average aggregate series, for a line chart. |
 
 ### Plugin Scope
 ----
@@ -694,7 +695,7 @@ RID: `req-compliance-core-dimension-mapping`
 
 Status: `Implemented`
 
-`dimension-coverage` (`req-compliance-core-dimension-coverage`) answers "which entities carry each value of this key". It cannot say which entities *should* carry one, so it cannot count the ones that are missing it, and it cannot say that a value is wrong for the kind of thing that carries it. Coverage work needs both. A mapping says, for an entity type, which dimension keys it should carry and which values are acceptable; the two runners here compare the grid against that mapping and put every live entity of a mapped type into one of three states.
+`dimension-coverage` (`req-compliance-core-dimension-coverage`) answers "which entities carry each value of this key". It cannot say which entities *should* carry one, so it cannot count the ones that are missing it, and it cannot say that a value is wrong for the kind of thing that carries it. Coverage work needs both. A mapping says, for an entity type or a group of entity types, which dimension keys it should carry and which values are acceptable; the two runners here compare the grid against that mapping and put every live entity of a mapped type into one of three states.
 
 **The mapping is data in a Search, not a new node type.** A `Search` is already a first-class grid entity with history (`tap_grid/models.py`, `Search(BaseModel)`), a panel points at it with `USES_SEARCH`, and a module runner receives the Search's `input_schema` defaults as its inputs (`req-compliance-core-dimension-coverage`). So the mapping is the `mappings` input of a Search node: it is versioned with the node, it is the thing a page points at, and compliance_core needs no model and no migration for it. A dedicated mapping node can replace the input later without changing the states or the output below.
 
@@ -709,13 +710,17 @@ The runners know no entity type, dimension key or value. Their inputs come from 
 | `mappings` | Required. A non-empty array of at most 50 mapping rows, below. |
 | `status` | `dimension-mapping-entities` only. Optional; one of `mapped`, `unmapped`, `mapped_incorrectly`. When set, only entities in that state are returned. |
 | `max_entities` | `dimension-mapping-entities` only. Optional integer, default `1000`, at most `5000`. The most entity rows returned. |
+| `group_by` | Optional. A dimension key of at most 128 characters, such as `inventory`. When set, both runners work in grouped mode, below. |
+| `exclude_groups` | Optional, grouped mode only. An array of at most 50 group values (strings of at most 128 characters) left out of the result: no row, no count, no warning. For a group the measure does not apply to. |
 
 A mapping row:
 
 | field | meaning |
 | --- | --- |
-| `entity_type` | The `entity_type` of the entities that should carry the keys (non-empty string). |
-| `keys` | A non-empty array of at most 20 `{key, allowed}`: `key` is a dimension key such as `dataclass.action`; `allowed` is a non-empty array of at most 100 strings of at most 256 characters, the values this row accepts for it. An `entity_type` and a `key` are at most 128 characters. |
+| `entity_type` | The `entity_type` of the entities that should carry the keys (non-empty string). Exactly one of `entity_type` and `entity_types` is given. |
+| `entity_types` | A group: a non-empty array of at most 50 entity types, each a non-empty string of at most 128 characters, that share these keys. The entry `*` matches every entity type that no other row names (grouped mode, below). `entity_type: X` is the same as `entity_types: [X]`. Ruled by George, 2026-10-21: a group is a plain list of exact types. |
+| `label` | Optional text of at most 128 characters naming the group in the summary row. Default: the registered name of the single type, else the types joined by `, `. |
+| `keys` | A non-empty array of at most 20 `{key, allowed}`: `key` is a dimension key such as `dataclass.action`; `allowed` is a non-empty array of at most 100 strings of at most 256 characters, the values this row accepts for it, or is omitted, which accepts any value that is present and not `null` (a key that must merely be set, such as the team that answers for an entity). An `entity_type` and a `key` are at most 128 characters. |
 | `match` | Optional, `any` or `all`, default `all`. `any`: carrying one listed key correctly is enough (a flow carries `dataclass.customer` or `dataclass.infra`). `all`: every listed key must be carried correctly. With one key the two are the same. |
 
 The states, for one live entity of the row's `entity_type`, where a key is *present* when the entity's `dimensions` map has it with a value that is not `null` (a `null` value is unobserved and counts as absent) and *correct* when it is present with a value in that key's `allowed` list:
@@ -732,6 +737,10 @@ The denominator of a row is every live entity of its `entity_type`. A value is c
 
 An allowed value with no dimension node `<key>.<value>`, and a key with no dimension node, are reported in `warnings` by key and value; they do not fail the run and do not change any state. The dictionary is read the way `dimension-coverage` reads it, and the two share that read.
 
+**Grouped mode.** Without `group_by` everything above holds unchanged. With `group_by` set to a dimension key, the population is every live entity that carries that key with a value that is not `null`, whatever its type, and each entity falls into the group named by its value (for the `inventory` key, its inventory category). An entity is judged by exactly one mapping row: the first row, in input order, whose `entity_type` or `entity_types` names its type exactly, else the first row that names `*`. An entity of a type no row names has no rule, and it is `unmapped` and counted in `no_rule` as well: a type nobody wrote a rule for is a gap to show, not an entity to leave out. (Ruled by George, 2026-10-21: never evaluate an unmarked thing as fine.)
+
+In grouped mode `dimension-mapping-summary` returns one row per value of the `group_by` key, not one per mapping row: first the values the dimension dictionary declares (`<key>.<value>` nodes, as `dimension-coverage` reads them) in name order, then any other value found, in name order. A declared value with no entities is listed with `denominator` 0 and a `null` `percent_mapped`. Each row has `group` (the value), `label` (the value's dictionary description up to its first colon, with a trailing full stop removed, so a description that begins with the display name gives that name; else the value), `denominator`, `mapped`, `unmapped`, `mapped_incorrectly`, `no_rule` (the part of `unmapped` that had no rule) and `percent_mapped`. `warnings` lists the entity types that had no rule, with their counts. `dimension-mapping-entities` in grouped mode returns one row per entity (not per mapping row), with `group`, `mapping` (the index of the judging row, `null` for no rule), `entity_id`, `entity_type`, `label`, `name`, `status`, `found`, `found_text` and `allowed_text` (`no rule` when there is none), ordered as before.
+
 #### Development
 
 The state names are the three the owner asked for ("mapped, unmapped, mapped incorrectly"). `mapped_incorrectly` is kept apart from `unmapped` because they are different problems: a missing tag is work not done, a wrong tag is work done wrongly, and an auditor asks about each. The mapping is not a count of what exists, so a type with nothing on the grid reports a zero denominator and a null percentage, not 100%.
@@ -743,8 +752,8 @@ The state names are the three the owner asked for ("mapped, unmapped, mapped inc
 | req-compliance-core-dimension-mapping-1 | Registered From The Manifest | Implemented | Both runners are declared in `[searches]` and registered in the search runner registry at plugin load. | |
 | req-compliance-core-dimension-mapping-2 | Envelope Shape | Implemented | Each result passes through the search service with the Search's `input_schema` defaults applied, has empty `nodes` and `edges`, and every value in `rows` survives `json.dumps`. | |
 | req-compliance-core-dimension-mapping-3 | Mapping Comes From The Input | Implemented | No entity type, dimension key or value is named in the runner code; the mapping is read from `mappings` alone. | |
-| req-compliance-core-dimension-mapping-4 | Mapping Validated | Implemented | A missing or empty `mappings`, a row without `entity_type`, a row with no `keys`, a key without `key` or with an empty `allowed`, a `match` other than `any` or `all`, more than 50 mapping rows, more than 20 keys in a row or more than 100 allowed values for a key, an entity type or key over 128 characters or an allowed value over 256, a `status` other than the three states, and a `max_entities` that is not an integer from 1 to 5000 are refused with a `ValueError` naming the input. | |
-| req-compliance-core-dimension-mapping-5 | Denominator Is Live Entities Of The Type | Implemented | A row's denominator is the count of live entities whose `entity_type` is the row's; a tombstoned entity contributes nothing and an entity of another type is not counted. | |
+| req-compliance-core-dimension-mapping-4 | Mapping Validated | Proposed | A missing or empty `mappings`, a row with neither `entity_type` nor `entity_types` or with both, an `entity_types` that is empty, over 50 entries or holds a non-string, a `label` over 128 characters, a `group_by` that is not a non-empty string of at most 128 characters, a row with no `keys`, a key without `key` or with an `allowed` that is present and empty, a `match` other than `any` or `all`, more than 50 mapping rows, more than 20 keys in a row or more than 100 allowed values for a key, an entity type or key over 128 characters or an allowed value over 256, a `status` other than the three states, and a `max_entities` that is not an integer from 1 to 5000 are refused with a `ValueError` naming the input. | |
+| req-compliance-core-dimension-mapping-5 | Denominator Is Live Entities Of The Type | Proposed | Without `group_by`, a row's denominator is the count of live entities whose `entity_type` is one the row names; a tombstoned entity contributes nothing and an entity of another type is not counted. | |
 | req-compliance-core-dimension-mapping-6 | Match All | Implemented | With `match: all`, an entity is `mapped` only when every listed key is present with an allowed value, `mapped_incorrectly` when it is not mapped and some listed key holds a disallowed value, and `unmapped` otherwise. | |
 | req-compliance-core-dimension-mapping-7 | Match Any | Implemented | With `match: any`, an entity is `mapped` when at least one listed key holds an allowed value, `mapped_incorrectly` when it is not mapped and some listed key holds a disallowed value, and `unmapped` when no listed key is present. | |
 | req-compliance-core-dimension-mapping-8 | Exact Match, Strings Only | Implemented | A value is allowed only when it equals an `allowed` string exactly; a prefix, a different case and a stored value that is not a string are not allowed; a `null` value is absent, so it reads unmapped and never mapped incorrectly. | |
@@ -755,10 +764,19 @@ The state names are the three the owner asked for ("mapped, unmapped, mapped inc
 | req-compliance-core-dimension-mapping-13 | Status Filter | Implemented | With the `status` input set, only entities in that state are returned; with it unset all three states are. | One Search per state gives a page its three tables. |
 | req-compliance-core-dimension-mapping-14 | Bounded Entity Rows | Implemented | No more than `max_entities` rows are returned, the omitted number is in `warnings`, and the summary counts are unaffected. | |
 | req-compliance-core-dimension-mapping-15 | Undeclared Names Warn | Implemented | An allowed value with no `<key>.<value>` dimension node and a key with no dimension node are listed in `warnings` and do not fail the run or change a state. | |
+| req-compliance-core-dimension-mapping-16 | A Group Is A List Of Types | Proposed | A row with `entity_types` judges every live entity whose type is in the list under that row's keys, and its summary row (without `group_by`) counts them together with the row's `label`. | Ruled by George, 2026-10-21. |
+| req-compliance-core-dimension-mapping-17 | Any Present Value | Proposed | A key with no `allowed` is correct when the entity's value for it is present and not `null`; it is never `mapped_incorrectly`, because no value is disallowed. | For "has a responsible team" the allowed values are team ids, which cannot be listed. |
+| req-compliance-core-dimension-mapping-18 | Grouped Population | Proposed | With `group_by`, the population is every live entity carrying that key with a non-null value, of any type, grouped by the value; a tombstoned entity contributes nothing. | |
+| req-compliance-core-dimension-mapping-19 | One Judging Row | Proposed | In grouped mode an entity is judged by the first row naming its type exactly, else the first row naming `*`, and by no other row; it is counted once. | |
+| req-compliance-core-dimension-mapping-20 | No Rule Is A Gap | Proposed | In grouped mode an entity of a type no row names is `unmapped` and counted in `no_rule`; `warnings` lists those types with their counts. | |
+| req-compliance-core-dimension-mapping-21 | Every Declared Group Is Listed | Proposed | The grouped summary lists every value the dimension dictionary declares for the key, in name order, then other values found in name order; a group with no entities has `denominator` 0 and `percent_mapped` `null`. | The nine inventory categories always appear. |
+| req-compliance-core-dimension-mapping-22 | Grouped Counts Add Up | Proposed | For every grouped summary row, `mapped + unmapped + mapped_incorrectly` equals `denominator`, `no_rule` is at most `unmapped`, and `percent_mapped` is `mapped` over `denominator` with one decimal. | |
+| req-compliance-core-dimension-mapping-23 | Grouped Entity Rows | Proposed | `dimension-mapping-entities` with `group_by` returns one row per entity with `group` and `mapping` (`null` for no rule), honours `status` and `max_entities`, and reports the omitted number in `warnings`. | |
+| req-compliance-core-dimension-mapping-24 | Excluded Groups Are Left Out | Proposed | A group value named in `exclude_groups` has no summary row, no entity row and no count anywhere in the result; an `exclude_groups` that is not an array of at most 50 strings of at most 128 characters, or that is set without `group_by`, is refused with a `ValueError` naming the input. | The Search's description says which group it leaves out and why, so the omission is visible. |
 
 #### Future
 
-- **Stored reports over time.** A scheduled run that writes a snapshot of the summary, so coverage can be read as a series, is a separate requirement and builds on this comparison.
+- **Stored reports over time.** The summary is snapshotted by `SearchSnapshotCollector` (`req-compliance-core-search-snapshot-collector`) and read back as a series by `search-snapshot-series` (`req-compliance-core-search-snapshot-series`).
 - **Exemptions.** Removing an entity from a denominator by an approved exception follows the exception model (`req-compliance-core-exception`); it is not specified here.
 - **A dedicated mapping node.** If mappings need their own identity, review or rows that other things point at, a node can replace the `mappings` input.
 - **A "does nothing" value on other axes.** `dataclass.action = none` is defined with its vocabulary; whether the customer and infra axes get one is open.
@@ -1072,6 +1090,46 @@ Snapshots grow without bound at one per Search per run. Retention is deliberatel
 
 A read restriction carried from the Search onto its snapshots, or a check that a Search is eligible to be snapshotted, if the grid offers one. Retention and pruning. A figure derived across snapshots (a trend line, a percent change) is a Search over snapshots, not a field here. Entity-level rows, if an auditor needs to see which entities were uncovered at the time, would be a second node type edged from the snapshot.
 
+
+### Search Snapshot Series
+----
+RID: `req-compliance-core-search-snapshot-series`
+
+Status: `Proposed`
+
+A snapshot holds one run of a Search. A line chart needs the opposite shape: one row per point, with a time, a line it belongs to and a value. `search-snapshot-series` is the `module` Search runner that reads the snapshots of one Search back in that shape. It exists because Gryphon cannot filter inside a snapshot's `rows` array (`req-compliance-core-search-snapshot`), and it is generic: it knows no Search, field or metric. Ruled by George, 2026-10-21: this reader lives in `compliance_core`.
+
+#### Implementation
+
+A `module` Search runner, `search-snapshot-series`, in `tap_plugin/compliance_core/searches/snapshot_series.py`, registered in the manifest `[searches]` table, under the read rules Gryphon applies (`tap_grid.gryphon.read_scope`: the caller's `db_alias` for every query). It writes nothing. Inputs, from the Search's `input_schema` defaults:
+
+| input | meaning |
+| --- | --- |
+| `search_id` | Required. The entity id of the Search whose snapshots are read, the Search a `CAPTURES_SEARCH` edge points at. |
+| `series_field` | Required. The name of the row field whose value names the line (for the mapping summary, `group`). |
+| `value_field` | Required. The name of the row field that is the point's number (for the mapping summary, `percent_mapped`). |
+| `aggregate_label` | Optional string, default `Overall`. The name of the aggregate line. An empty string omits the aggregate. |
+| `since` | Optional ISO 8601 date-time. Only snapshots observed at or after it are read. |
+| `max_snapshots` | Optional integer, default `720` (thirty days hourly), at most `5000`. The most recent snapshots read. |
+
+One output row per snapshot per series: `observed_at` (UTC ISO 8601 with `Z`, whole seconds), `series` (the string value of `series_field`), `value` (the number in `value_field`) and `aggregate` (false). When `aggregate_label` is set, one more row per snapshot: `series` is the label, `value` is the plain mean of that snapshot's series values, rounded to one decimal, and `aggregate` is true. The aggregate is a plain average of the lines, not weighted by how many entities each line holds (ruled by George, 2026-10-21). Rows are ordered by `observed_at` ascending, then the aggregate last, then `series` by name, so a chart draws the aggregate on top.
+
+A row whose `value_field` is `null` or not a number is not a point and is not part of the mean; a snapshot with no usable value for the aggregate has no aggregate row. A gap is stated and not drawn as 0: `warnings` counts the rows skipped for a missing or non-numeric value, the snapshots that were `truncated`, and, when more snapshots exist than `max_snapshots`, how many older ones were left out.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-search-snapshot-series-1 | Registered From The Manifest | Proposed | The runner is declared in `[searches]` and registered in the search runner registry at plugin load. | |
+| req-compliance-core-search-snapshot-series-2 | Names Nothing | Proposed | No Search id, field name or metric is named in the runner code. | |
+| req-compliance-core-search-snapshot-series-3 | Inputs Validated | Proposed | A missing or non-string `search_id`, `series_field` or `value_field`, a non-string `aggregate_label`, a `since` that is not an ISO 8601 date-time and a `max_snapshots` that is not an integer from 1 to 5000 are refused with a `ValueError` naming the input. | |
+| req-compliance-core-search-snapshot-series-4 | One Row Per Snapshot And Series | Proposed | Each snapshot of the Search yields one row per distinct `series_field` value in its `rows`, with `observed_at`, `series`, `value` and `aggregate` false. | |
+| req-compliance-core-search-snapshot-series-5 | Aggregate Is A Plain Mean | Proposed | With a non-empty `aggregate_label`, each snapshot also yields one row whose value is the unweighted mean of that snapshot's series values to one decimal, with `aggregate` true; an empty label yields none. | |
+| req-compliance-core-search-snapshot-series-6 | Gaps Are Not Zeros | Proposed | A row with a `null` or non-numeric value yields no point and is left out of the mean, and `warnings` counts the skipped rows. | |
+| req-compliance-core-search-snapshot-series-7 | Order Puts The Aggregate On Top | Proposed | Rows are ordered by `observed_at`, then non-aggregate before aggregate, then `series`. | |
+| req-compliance-core-search-snapshot-series-8 | Most Recent Snapshots | Proposed | At most `max_snapshots` of the most recent snapshots (after `since`) are read and the number of older ones left out is in `warnings`. | |
+| req-compliance-core-search-snapshot-series-9 | Truncated Snapshots Are Flagged | Proposed | A snapshot whose `truncated` is true is read from the rows it holds and counted in `warnings`. | |
+| req-compliance-core-search-snapshot-series-10 | Read Only | Proposed | The runner writes no node or edge and contains no code that patches or replaces a snapshot. | |
 
 ### Search Snapshot Collector Base
 ----
