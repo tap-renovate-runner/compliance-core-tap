@@ -504,7 +504,7 @@ Six edges, each its own mechanical relationship, all references (none is contain
 
 | edge (compliance_core) | endpoints | properties |
 | --- | --- | --- |
-| `CONCERNS_COMPLIANCE_VULNERABILITY` | `compliance_finding` → `compliance_vulnerability` | `fixed_versions`: list of strings, may be empty. |
+| `CONCERNS_COMPLIANCE_VULNERABILITY` | `compliance_finding` → `compliance_vulnerability` | `fixed_versions`: list of strings, may be empty. `fix_state`: optional string, one of `fixed`, `not-fixed`, `wont-fix`, `unknown`. |
 | `PERFORMS_COMPLIANCE_SCAN_RUN` | `compliance_scanner` → `compliance_scan_run` | none |
 | `REPORTS_COMPLIANCE_FINDING` | `compliance_scan_run` → `compliance_finding` | none |
 | `DETECTS_COMPLIANCE_FINDING` | `compliance_scanner` → `compliance_finding` | optional `tool_version`, `category`. |
@@ -512,6 +512,8 @@ Six edges, each its own mechanical relationship, all references (none is contain
 | `SCANNED_COMPLIANCE_TARGET` | `compliance_scan_run` → any node (wildcard target) | `outcome`: required string, the producer's own word for how the examination ended; optional `reason`. |
 
 **`CONCERNS_COMPLIANCE_VULNERABILITY`** is named after `CONCERNS_COMPLIANCE_CONTROL`. Its `fixed_versions` is the fix in the component the finding is about, because the same vulnerability is fixed at a different version in each component. `[]` means the source looked and named no fix; an absent property means it was not observed.
+
+`fix_state` says why the list is what it is, in the scanner's own four words: `fixed` (a fix exists), `not-fixed` (no fix yet), `wont-fix` (the party that decides, such as a distribution's security team, has declined to fix it) and `unknown` (the scanner could not say). `[]` alone cannot tell "no fix yet" from "will not be fixed", and remediation needs the difference: the first can change, the second means replacing or accepting the component. Like `fixed_versions` it is a fact about the vulnerability in one component, so it rides the edge. An absent `fix_state` means the source carried no state at all; the scanner's `unknown` is a stated answer and is kept. The property does not constrain `fixed_versions` (a source may name versions beside `not-fixed`), and nothing here derives one from the other. "Wont-fix" is the source's declaration, not a TAP judgement and not an upstream maintainer's statement unless the source says so.
 
 **`REPORTS_COMPLIANCE_FINDING`** goes from the run to the finding. By convention a finding is reported by the latest run that saw it and earlier runs are history, not edges.
 
@@ -543,6 +545,7 @@ Six edges, each its own mechanical relationship, all references (none is contain
 | req-compliance-core-scan-edges-8 | Two Paths To Count A Scanner's Findings | Deferred | A page counting findings per scanner needs both paths, scanner to run to finding and scanner to finding. | Gryphon has no UNION, so that is two Searches combined in JS, or two cards. |
 | req-compliance-core-scan-edges-9 | A Run May Scan Any Node | Implemented | `SCANNED_COMPLIANCE_TARGET` accepts any node as its target from a scan run, carries the `scan-run` dimension, and keeps `outcome` and `reason` as written. | `::TestEdges::test_a_run_may_scan_any_node_and_says_how_it_ended` |
 | req-compliance-core-scan-edges-10 | Outcome Is Required, Only Runs Scan | Implemented | A `SCANNED_COMPLIANCE_TARGET` without a string `outcome`, with an empty one, or with an unknown property is refused, and a scanner or vulnerability as its source is refused. | `::TestEdges::test_a_scanned_target_edge_requires_a_string_outcome`, `::test_only_a_run_may_scan_a_target` |
+| req-compliance-core-scan-edges-11 | Fix State Names Why | Proposed | `CONCERNS_COMPLIANCE_VULNERABILITY` accepts an optional `fix_state` that is one of `fixed`, `not-fixed`, `wont-fix` or `unknown` and keeps it as written; an edge without it is valid; any other string, a non-string or an unknown property is refused; the edge definition's description and property schema describe it. | Lets "no fix yet" and "will not be fixed" be told apart; `fixed_versions` is unchanged. |
 
 ### Vulnerability Cross-Tab Searches
 
