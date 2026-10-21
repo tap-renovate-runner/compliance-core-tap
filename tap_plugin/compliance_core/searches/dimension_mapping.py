@@ -214,7 +214,7 @@ def _grouped_population(group_by: str, *, db_alias: str) -> Any:
     """
     return (
         read_scope.node_relation(read_scope.DEFAULT_SCOPE, None, db_alias=db_alias)
-        .filter(**{f"dimensions__{group_by}__isnull": False})
+        .filter(dimensions__has_key=group_by)  # the key is a bound parameter, never part of a lookup path
         .values_list("pk", "name", "entity_type", "dimensions")
         .iterator(chunk_size=_CHUNK)
     )
@@ -375,6 +375,7 @@ def dimension_mapping_entities(
     group_by, excluded = _grouping(inputs)
     texts = [row.keys_text for row in mapping]  # one string per mapping row, shared by every entity row of it
     seen = 0
+    no_rule_types: dict[str, int] = {}
 
     def entity_row(index: int | None, pk: Any, name: str, entity_type: str, state: str, found: dict[str, Any]) -> Any:
         return (_STATE_ORDER[state], entity_type, name, str(pk), -1 if index is None else index), {
@@ -395,6 +396,8 @@ def dimension_mapping_entities(
             for group, pk, name, entity_type, state, found, index in _grouped_stream(
                 mapping, group_by, excluded, db_alias=db_alias
             ):
+                if index is None:
+                    no_rule_types[entity_type] = no_rule_types.get(entity_type, 0) + 1
                 if wanted is not None and state != wanted:
                     continue
                 seen += 1
@@ -414,6 +417,8 @@ def dimension_mapping_entities(
     kept = heapq.nsmallest(max_entities, stream(), key=lambda item: item[0])
     rows = [row for _key, row in kept]
     warnings = _warnings(mapping, db_alias=db_alias, extra_keys=(group_by,) if group_by else ())
+    if no_rule_types:
+        warnings["no_rule_types"] = [f"{t}: {n}" for t, n in sorted(no_rule_types.items())]
     if seen > max_entities:
         warnings["entities_omitted"] = [
             f"{seen - max_entities} entity rows were left out; max_entities is {max_entities}"

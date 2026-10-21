@@ -214,6 +214,23 @@ class TestGroupedEntities:
         assert (rows["a-wrong"]["mapping"], rows["a-wrong"]["status"]) == (1, "mapped_incorrectly")
         assert (rows["f"]["mapping"], rows["f"]["status"], rows["f"]["allowed_text"]) == (None, "unmapped", "no rule")
 
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-20")
+    def test_the_entities_runner_warns_of_types_with_no_rule_too(self) -> None:
+        build()
+        assert _entities(MAPPINGS)["warnings"]["no_rule_types"] == [f"{FINDING}: 1"]
+
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-18")
+    @pytest.mark.parametrize("key", ["a__b", "has.dot", "x__isnull"])
+    def test_a_group_key_with_double_underscores_or_dots_is_an_exact_key(self, key: str) -> None:
+        e = Entity.objects.create(entity_type=EXCEPTION, name="odd-key")
+        Entity.objects.filter(pk=e.pk).update(dimensions={key: "g", "team": "a"})
+        out = dimension_mapping_summary(
+            Search(),
+            {"mappings": [{"entity_type": EXCEPTION, "keys": [TEAM_ANY]}], "group_by": key},
+            db_alias="default",
+        )
+        assert [(r["group"], r["denominator"], r["mapped"]) for r in out["rows"]] == [("g", 1, 1)]
+
     @pytest.mark.spec("req-compliance-core-dimension-mapping-23")
     def test_status_and_max_entities_are_honoured_and_the_omitted_number_reported(self) -> None:
         build()
