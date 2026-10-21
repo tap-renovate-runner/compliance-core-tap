@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.8.8](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.7...v0.8.8) (2026-10-21)
+
+
+### Features
+
+* **compliance_core:** grouped dimension mapping and the search-snapshot-series runner ([301af3d](https://github.com/unified-systems-com/compliance-core-tap/commit/301af3d7a4ea348e125ba0e56a95471130cbc1b9))
+* **compliance_core:** grouped dimension mapping and the search-snapshot-series runner ([bf5ebd4](https://github.com/unified-systems-com/compliance-core-tap/commit/bf5ebd44009e3b7a700dc5078cd30128688a1e7b))
+* **compliance_core:** retire COVERS_COMPLIANCE_FINDING rows whose source is an exception ([accb2f6](https://github.com/unified-systems-com/compliance-core-tap/commit/accb2f665660e80c386b73b3bd5b72c1b6ac4be3))
+* **compliance_core:** retire COVERS_COMPLIANCE_FINDING rows whose source is an exception ([1cde87c](https://github.com/unified-systems-com/compliance-core-tap/commit/1cde87c2693f7ff97f656a8d13fc9ced6910115f))
+* fix_state on CONCERNS_COMPLIANCE_VULNERABILITY ([758a5f1](https://github.com/unified-systems-com/compliance-core-tap/commit/758a5f1bd4cb9d6e781bf08171cac1102b4d0e71))
+* fix_state on CONCERNS_COMPLIANCE_VULNERABILITY [via grype-tap] ([3505790](https://github.com/unified-systems-com/compliance-core-tap/commit/3505790f22445f32d12dfd60c18a73664fada0ef))
+
+
+### Bug Fixes
+
+* **compliance_core:** group by an exact JSON key; the entities runner warns of types with no rule ([8b2c2d9](https://github.com/unified-systems-com/compliance-core-tap/commit/8b2c2d98e79236af26193a03927976b9a1169fc6))
+* **compliance_core:** tighten grouped mapping and the snapshot series reader ([fef384a](https://github.com/unified-systems-com/compliance-core-tap/commit/fef384a32e47b9fe7c6357e4c94708d45bc0a504))
+
+
+### Documentation
+
+* **spec:** fix_state on CONCERNS_COMPLIANCE_VULNERABILITY ([a441c61](https://github.com/unified-systems-com/compliance-core-tap/commit/a441c61981fa62295ffcf2be6b6123a75867cc28))
+* **spec:** grouped dimension mapping and the snapshot series reader ([fe772b5](https://github.com/unified-systems-com/compliance-core-tap/commit/fe772b52bb496abd79fed6ca2bd23abc4fcfb3ce))
+* **spec:** grouped dimension mapping and the snapshot series reader ([f7444d0](https://github.com/unified-systems-com/compliance-core-tap/commit/f7444d03e8737100b29e39378f54c8c083f3624d))
+
 ## [0.8.7](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.6...v0.8.7) (2026-10-20)
 
 
