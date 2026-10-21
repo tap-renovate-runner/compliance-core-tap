@@ -35,7 +35,7 @@ def _summary_search(summary_search_id: Any, *, db_alias: str) -> Any:
             .filter(entity_id=summary_search_id)
             .first()
         )
-    except ValueError, TypeError, ValidationError:  # not a UUID
+    except (ValueError, TypeError, ValidationError):  # not a UUID  # fmt: skip
         found = None
     if found is None:
         raise ValueError(f"summary_search_id {summary_search_id} is not a search on this grid")
