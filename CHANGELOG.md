@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.9](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.8...v0.8.9) (2026-10-21)
+
+
+### Features
+
+* **compliance_core:** dimension-mapping-totals and the shared coverage calculation ([00abe64](https://github.com/unified-systems-com/compliance-core-tap/commit/00abe64cebfacd87c5c3cef2c2c4707091612069))
+* **compliance_core:** dimension-mapping-totals and the shared coverage calculation ([3e34238](https://github.com/unified-systems-com/compliance-core-tap/commit/3e3423891699d8e632b8dad67105be3f9eb1f365))
+
+
+### Bug Fixes
+
+* **compliance_core:** keep the except tuple parenthesized in the totals runner ([5c8a8dd](https://github.com/unified-systems-com/compliance-core-tap/commit/5c8a8dd69b32a57610ed37245ac021913d06209f))
+* **compliance_core:** pass layer to the summary; check coverage.py's imports statically ([39fd736](https://github.com/unified-systems-com/compliance-core-tap/commit/39fd73627d3003523cd11caa9780c4c6160c1819))
+
+
+### Documentation
+
+* **spec:** dimension-mapping-totals, the live coverage totals a card reads ([aa13c61](https://github.com/unified-systems-com/compliance-core-tap/commit/aa13c6127fc88d6269868e2937ad98992e341967))
+
 ## [0.8.8](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.7...v0.8.8) (2026-10-21)
 
 
