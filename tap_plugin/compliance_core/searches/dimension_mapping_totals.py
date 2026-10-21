@@ -64,6 +64,6 @@ def dimension_mapping_totals(
     req-compliance-core-dimension-mapping-totals
     """
     summary = _summary_search(inputs.get("summary_search_id"), db_alias=db_alias)
-    out = dimension_mapping_summary(summary, _defaults(summary), db_alias=db_alias)
+    out = dimension_mapping_summary(summary, _defaults(summary), db_alias=db_alias, layer=layer)
     row = totals_from_rows(out["rows"])
     return {"nodes": [], "edges": [], "rows": [row], "info": {"row_count": 1}, "warnings": out["warnings"]}

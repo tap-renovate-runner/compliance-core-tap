@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import ast
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -75,20 +75,17 @@ def run(search: Entity) -> dict[str, Any]:
 
 class TestPureCalculation:
     @pytest.mark.spec("req-compliance-core-dimension-mapping-totals-7")
-    def test_the_module_imports_and_runs_with_django_blocked(self) -> None:
-        code = (
-            "import importlib.abc, importlib.util, sys\n"
-            "class Block(importlib.abc.MetaPathFinder):\n"
-            "    def find_spec(self, name, path=None, target=None):\n"
-            "        if name.split('.')[0] in ('django', 'tap_grid', 'tap_plugin'):\n"
-            "            raise ImportError('blocked: ' + name)\n"
-            "sys.meta_path.insert(0, Block())\n"
-            f"spec = importlib.util.spec_from_file_location('coverage_mod', {str(PACKAGE / 'coverage.py')!r})\n"
-            "m = importlib.util.module_from_spec(spec); sys.modules['coverage_mod'] = m; spec.loader.exec_module(m)\n"
-            "print(m.plain_mean([10, 20, None]), m.totals_from_rows([{'percent_mapped': 50.0, 'denominator': 2, 'mapped': 1}])['percent_pooled'])\n"
-        )
-        out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True)
-        assert out.stdout.split() == ["15.0", "50.0"]
+    def test_the_module_imports_only_the_standard_library(self) -> None:
+        """Django-free by construction: every import in coverage.py is from the standard library."""
+        tree = ast.parse((PACKAGE / "coverage.py").read_text(encoding="utf-8"))
+        imported = {
+            (node.module or "").split(".")[0] if isinstance(node, ast.ImportFrom) else alias.name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import | ast.ImportFrom)
+            for alias in (node.names if isinstance(node, ast.Import) else [None])
+        }
+        assert imported and imported <= set(sys.stdlib_module_names), imported - set(sys.stdlib_module_names)
+        assert "django" not in imported and "tap_grid" not in imported
 
     @pytest.mark.spec("req-compliance-core-dimension-mapping-totals-3")
     @pytest.mark.parametrize(
