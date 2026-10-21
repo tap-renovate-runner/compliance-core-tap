@@ -180,6 +180,7 @@ layer.
 | req-compliance-core-reach | [Findings Reached Searches](#findings-reached-searches) | Implemented | Two generic `module` Search runners, `findings-reached-count` and `findings-reached-list`, count and list the distinct open findings a root reaches along edge-type chains given as input, which Gryphon cannot sum across paths. |
 | req-compliance-core-dimension-coverage | [Dimension Coverage Search](#dimension-coverage-search) | Implemented | One generic `module` Search runner, `dimension-coverage`, counts the entities carrying each value of a dimension key, broken down by entity type, which Gryphon cannot group. |
 | req-compliance-core-dimension-mapping | [Dimension Mapping Searches](#dimension-mapping-searches) | Implemented | Two generic `module` Search runners, `dimension-mapping-summary` and `dimension-mapping-entities`, compare what entities carry against a mapping held in the Search's inputs and report each live entity of a mapped type as mapped, unmapped or mapped incorrectly. A mapping row may name a group of entity types, a key may accept any present value, and the summary may report one row per value of a grouping dimension (the inventory category). |
+| req-compliance-core-dimension-mapping-totals | [Dimension Mapping Totals](#dimension-mapping-totals) | Proposed | `dimension-mapping-totals`: one row of live totals (the plain-average coverage, the pooled counts) for a grouped summary Search, read from that Search's own inputs, so a card shows the figures with no second copy of the mapping. |
 | req-compliance-core-finding-detection | [Finding Detection Time](#finding-detection-time) | Implemented | `compliance_finding.first_detected_at`: when the producer first detected the finding; null until a source says; not identity. |
 | req-compliance-core-exception | [Exception Modeling](#exception-modeling) | Implemented | `compliance_exception` gains `kind`, `justification`, `approver`, `granted_at`, `review_by`, `expires_at` and `verify_within_hours`, and declares its instances as contained. |
 | req-compliance-core-exception-instance | [Exception Instance Modeling](#exception-instance-modeling) | Implemented | `compliance_exception_instance`: one exception's application to one vulnerability within one declared scope; carries the last check's `outcome` and `verified_at`. |
@@ -781,6 +782,52 @@ The state names are the three the owner asked for ("mapped, unmapped, mapped inc
 - **A dedicated mapping node.** If mappings need their own identity, review or rows that other things point at, a node can replace the `mappings` input.
 - **A "does nothing" value on other axes.** `dataclass.action = none` is defined with its vocabulary; whether the customer and infra axes get one is open.
 
+
+
+### Dimension Mapping Totals
+----
+RID: `req-compliance-core-dimension-mapping-totals`
+
+Status: `Proposed`
+
+A coverage card shows a few figures about a whole grouped summary: how covered the categories are on average, and how many entries are mapped, unmapped and mapped incorrectly. A card reads one row of one Search, and the grouped summary returns one row per group, so the figures need a row of their own. They are also wanted in more than one place (a card on a page, a card on the overview, a consolidated coverage panel that gathers them), so the calculation lives here once and any panel or runner reuses it. Ruled by George, 2026-10-21: the cards are live, plain-average, standalone and pluggable anywhere.
+
+#### Implementation
+
+**The calculation.** A Django-free module `tap_plugin/compliance_core/coverage.py` holds two pure functions. `plain_mean(values)` returns the unweighted mean of the numbers in `values` to one decimal, ignoring `None` and non-numbers, and `None` when none remain: it is the one place a coverage average is computed, and `search-snapshot-series` (`req-compliance-core-search-snapshot-series`) uses it for its `Overall` line, so a card and the chart always agree. `totals_from_rows(rows)` takes the rows of a grouped summary (`req-compliance-core-dimension-mapping`) and returns the totals below. Both are importable by any other runner or panel.
+
+**The runner.** `dimension-mapping-totals` is a `module` Search runner in `tap_plugin/compliance_core/searches/dimension_mapping_totals.py`, registered in the manifest `[searches]` table, under the read rules Gryphon applies (`tap_grid.gryphon.read_scope`). It writes nothing. It runs the grouped summary live, every time it is called: no snapshot is read. Input:
+
+| input | meaning |
+| --- | --- |
+| `summary_search_id` | Required. The entity id of a `search` node whose runner is `dimension-mapping-summary`. The runner reads that Search's `input_schema` defaults (`mappings`, `group_by`, `exclude_groups`) and runs the summary with them, so the mapping is stated once, in the summary Search, and the totals can never differ from it. |
+
+It returns exactly one row:
+
+| field | meaning |
+| --- | --- |
+| `groups` | The number of groups that have a `percent_mapped` (a group with no entities has none). |
+| `percent_overall` | `plain_mean` of the groups' `percent_mapped`, one decimal; `null` when no group has one. |
+| `denominator`, `mapped`, `unmapped`, `mapped_incorrectly`, `no_rule` | The sums over every group. |
+| `percent_pooled` | `mapped` over `denominator`, one decimal; `null` when `denominator` is 0. |
+
+`percent_overall` is the plain average the chart's `Overall` line shows (George, 2026-10-21); `percent_pooled` is given beside it and is not the headline, because a category with many entries (the 180 packages) would dominate it. A card for "entries without a team" shows `unmapped`; "with a team" shows `mapped`; "entries" shows `denominator`.
+
+An id that is not a `search` node, or whose runner is not `dimension-mapping-summary`, or a Search whose defaults are invalid, is refused with a `ValueError` naming the input. A summary Search that excludes groups gives totals over the groups it returns.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | :---: | --- | --- |
+| req-compliance-core-dimension-mapping-totals-1 | Registered From The Manifest | Proposed | The runner is declared in `[searches]` and registered in the search runner registry at plugin load. | |
+| req-compliance-core-dimension-mapping-totals-2 | One Row | Proposed | The runner returns exactly one row with `groups`, `percent_overall`, `denominator`, `mapped`, `unmapped`, `mapped_incorrectly`, `no_rule` and `percent_pooled`, and every value survives `json.dumps`. | |
+| req-compliance-core-dimension-mapping-totals-3 | Plain Average | Proposed | `percent_overall` equals the unweighted mean of the groups' `percent_mapped` to one decimal; a group with a `null` percent is not in the mean and not in `groups`. | |
+| req-compliance-core-dimension-mapping-totals-4 | Sums Add Up | Proposed | `mapped + unmapped + mapped_incorrectly` equals `denominator`, `no_rule` is at most `unmapped`, and `percent_pooled` is `mapped` over `denominator` with one decimal, `null` at 0. | |
+| req-compliance-core-dimension-mapping-totals-5 | Mapping Stated Once | Proposed | The runner takes its `mappings`, `group_by` and `exclude_groups` from the named summary Search's `input_schema` defaults and holds none of its own; changing the summary Search changes the totals with no other edit. | |
+| req-compliance-core-dimension-mapping-totals-6 | One Mean | Proposed | `plain_mean` is the only place a coverage average is computed: `search-snapshot-series` and this runner both call it, and a test fails if either rounds a mean itself. | A card and the chart's `Overall` always agree. |
+| req-compliance-core-dimension-mapping-totals-7 | Reusable And Django-Free | Proposed | `coverage.py` imports no Django module and its two functions are importable by another runner or panel. | Import-blocked test. |
+| req-compliance-core-dimension-mapping-totals-8 | Live, Never A Snapshot | Proposed | A run reads the grid at call time and reads no `compliance_search_snapshot`. | |
+| req-compliance-core-dimension-mapping-totals-9 | Bad Input Refused | Proposed | A missing or non-string `summary_search_id`, an id that is not a `search`, and a Search whose runner is not `dimension-mapping-summary` are refused with a `ValueError` naming the input. | |
 
 ### Finding Detection Time
 ----
