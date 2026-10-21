@@ -15,7 +15,7 @@ Inputs:
     max_snapshots    optional, 1 to 5000, default 720: the most recent snapshots read
 
 One row per snapshot per distinct series value (``observed_at``, ``series``, ``value``, ``aggregate`` false), then one aggregate
-row per snapshot whose value is the plain, unweighted mean of that snapshot's series values to one decimal. A null or non-numeric
+row per snapshot whose value is the plain, unweighted mean (``coverage.plain_mean``, the one place a coverage average is computed) of that snapshot's series values. A null or non-numeric
 value is not a point and is not in the mean: a gap is stated, never drawn as 0. Ordered by ``observed_at``, non-aggregate before
 aggregate, then ``series``.
 """
@@ -28,6 +28,7 @@ from typing import Any
 from tap_grid.gryphon import read_scope
 from tap_grid.models import Search
 
+from ..coverage import plain_mean
 from ..models.compliance_search_snapshot import ComplianceSearchSnapshot
 
 CAPTURES_EDGE = "CAPTURES_SEARCH__compliance_core"
@@ -118,8 +119,14 @@ def search_snapshot_series(
         observed = _stamp(snapshot.observed_at)
         out.extend({"observed_at": observed, "series": s, "value": v, "aggregate": False} for s, v in seen.items())
         if aggregate_label and seen:
-            mean = round(sum(seen.values()) / len(seen), 1)
-            out.append({"observed_at": observed, "series": aggregate_label, "value": mean, "aggregate": True})
+            out.append(
+                {
+                    "observed_at": observed,
+                    "series": aggregate_label,
+                    "value": plain_mean(seen.values()),
+                    "aggregate": True,
+                }
+            )
     out.sort(key=lambda r: (r["observed_at"], r["aggregate"], r["series"]))
     warnings: dict[str, Any] = {}
     if skipped:
