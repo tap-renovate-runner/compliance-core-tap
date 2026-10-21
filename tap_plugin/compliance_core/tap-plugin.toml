@@ -49,6 +49,7 @@ dimension-coverage = "tap_plugin.compliance_core.searches.dimension_coverage.dim
 dimension-mapping-summary = "tap_plugin.compliance_core.searches.dimension_mapping.dimension_mapping_summary"
 dimension-mapping-entities = "tap_plugin.compliance_core.searches.dimension_mapping.dimension_mapping_entities"
 finding-exception-coverage = "tap_plugin.compliance_core.searches.exception_coverage.finding_exception_coverage"
+search-snapshot-series = "tap_plugin.compliance_core.searches.snapshot_series.search_snapshot_series"
 exceptions-due-review = "tap_plugin.compliance_core.searches.exception_coverage.exceptions_due_review"
 
 [[boot.records]]

@@ -141,20 +141,20 @@ class TestClassification:
     @pytest.mark.spec("req-compliance-core-dimension-mapping-8")
     @pytest.mark.parametrize("value", ["RED", "re", "red ", 5, ["red"], {"v": "red"}, True])
     def test_a_value_is_allowed_only_by_exact_string_equality(self, value: Any) -> None:
-        row = MappingRow(EXCEPTION, (("zone", ("red", "green")),), "all")
+        row = MappingRow((EXCEPTION,), (("zone", ("red", "green")),), "all")
         assert classify({"zone": value}, row)[0] == "mapped_incorrectly"
         assert classify({"zone": "red"}, row)[0] == "mapped"
 
     @pytest.mark.spec("req-compliance-core-dimension-mapping-8")
     def test_null_and_absent_are_both_unmapped(self) -> None:
-        row = MappingRow(EXCEPTION, (("zone", ("red",)),), "all")
+        row = MappingRow((EXCEPTION,), (("zone", ("red",)),), "all")
         assert classify({"zone": None}, row) == ("unmapped", {})
         assert classify({}, row) == ("unmapped", {})
         assert classify(None, row) == ("unmapped", {})
 
     @pytest.mark.spec("req-compliance-core-dimension-mapping-8")
     def test_a_value_that_says_none_is_a_real_value(self) -> None:
-        row = MappingRow(EXCEPTION, (("dataclass.action", ("none", "read")),), "all")
+        row = MappingRow((EXCEPTION,), (("dataclass.action", ("none", "read")),), "all")
         assert classify({"dataclass.action": "none"}, row)[0] == "mapped"
 
 
