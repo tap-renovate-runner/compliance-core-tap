@@ -90,10 +90,10 @@ def _non_empty_str(value: Any) -> bool:
 
 
 def _types(where: str, raw: dict[str, Any]) -> tuple[str, ...]:
-    single, group = raw.get("entity_type"), raw.get("entity_types")
-    if (single is None) == (group is None):
+    if ("entity_type" in raw) == ("entity_types" in raw):
         raise ValueError(f"{where} needs exactly one of entity_type and entity_types")
-    if single is not None:
+    single, group = raw.get("entity_type"), raw.get("entity_types")
+    if "entity_type" in raw:
         if not _non_empty_str(single) or len(single) > MAX_NAME:
             raise ValueError(f"{where}.entity_type must be a non-empty string of at most {MAX_NAME} characters")
         return (single,)
@@ -197,12 +197,12 @@ def classify(dimensions: Any, row: MappingRow) -> tuple[str, dict[str, Any]]:
     return "unmapped", found
 
 
-def _entities(entity_type: str, *, db_alias: str) -> Any:
-    """The live entities of a type, streamed: ``(pk, name, dimensions)``."""
+def _entities(entity_types: tuple[str, ...], *, db_alias: str) -> Any:
+    """The live entities of a row's types, streamed in one query: ``(pk, name, entity_type, dimensions)``."""
     return (
         read_scope.node_relation(read_scope.DEFAULT_SCOPE, None, db_alias=db_alias)
-        .filter(entity_type=entity_type)
-        .values_list("pk", "name", "dimensions")
+        .filter(entity_type__in=entity_types)
+        .values_list("pk", "name", "entity_type", "dimensions")
         .iterator(chunk_size=_CHUNK)
     )
 
@@ -343,9 +343,8 @@ def dimension_mapping_summary(
     rows: list[dict[str, Any]] = []
     for row in mapping:
         counts = dict.fromkeys(STATES, 0)
-        for entity_type in row.entity_types:
-            for _pk, _name, dimensions in _entities(entity_type, db_alias=db_alias):
-                counts[classify(dimensions, row)[0]] += 1
+        for _pk, _name, _type, dimensions in _entities(row.entity_types, db_alias=db_alias):
+            counts[classify(dimensions, row)[0]] += 1
         denominator = sum(counts.values())
         rows.append(
             {
@@ -403,13 +402,12 @@ def dimension_mapping_entities(
                 yield key, {**row, "group": group}
             return
         for index, row in enumerate(mapping):
-            for entity_type in row.entity_types:
-                for pk, name, dimensions in _entities(entity_type, db_alias=db_alias):
-                    state, found = classify(dimensions, row)
-                    if wanted is not None and state != wanted:
-                        continue
-                    seen += 1
-                    yield entity_row(index, pk, name, entity_type, state, found)
+            for pk, name, entity_type, dimensions in _entities(row.entity_types, db_alias=db_alias):
+                state, found = classify(dimensions, row)
+                if wanted is not None and state != wanted:
+                    continue
+                seen += 1
+                yield entity_row(index, pk, name, entity_type, state, found)
 
     # Only the first max_entities rows are kept while the entities stream past, so memory is bounded by the cap, not by
     # the grid or by the number of mapping rows; the count of the rest is exact.

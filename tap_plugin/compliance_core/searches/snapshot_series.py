@@ -87,14 +87,13 @@ def search_snapshot_series(
     """
     search_id, series_field, value_field, aggregate_label, since, limit = _inputs(inputs)
     scope = read_scope.DEFAULT_SCOPE
-    snapshot_ids = [
-        str(pk)
-        for pk in read_scope.edge_relation(scope, db_alias=db_alias)
+    captured = (
+        read_scope.edge_relation(scope, db_alias=db_alias)
         .filter(edge_type=CAPTURES_EDGE, to_entity_id=search_id)
-        .values_list("from_entity_id", flat=True)
-    ]
+        .values("from_entity_id")
+    )  # a subquery: the snapshot ids are never held in Python, so max_snapshots bounds what is read
     snapshots = read_scope.node_relation(scope, ComplianceSearchSnapshot, db_alias=db_alias).filter(
-        entity_id__in=snapshot_ids
+        entity_id__in=captured
     )
     if since is not None:
         snapshots = snapshots.filter(observed_at__gte=since)

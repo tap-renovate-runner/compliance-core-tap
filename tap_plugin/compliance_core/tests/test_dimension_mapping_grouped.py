@@ -167,6 +167,16 @@ class TestGroupedSummary:
         )  # the exception with no inventory is unmapped
         assert row["entity_types"] == [EXCEPTION, ARTIFACT]
 
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-16")
+    def test_a_row_reads_all_its_types_in_one_query(self, django_assert_max_num_queries: Any) -> None:
+        build()
+        row = {
+            "entity_types": [EXCEPTION, ARTIFACT, FINDING, *[f"nope_{i}" for i in range(40)]],
+            "keys": [{"key": "inventory"}],
+        }
+        with django_assert_max_num_queries(8):
+            dimension_mapping_summary(Search(), {"mappings": [row]}, db_alias="default")
+
     @pytest.mark.spec("req-compliance-core-dimension-mapping-5")
     def test_without_group_by_a_single_type_row_is_as_before(self) -> None:
         build()
@@ -174,6 +184,24 @@ class TestGroupedSummary:
             Search(), {"mappings": [{"entity_type": EXCEPTION, "keys": [TEAM_ANY]}]}, db_alias="default"
         )["rows"]
         assert (row["denominator"], row["entity_type"], row["label"]) == (3, EXCEPTION, _label(EXCEPTION))
+
+
+class TestAnyValueKeys:
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-17")
+    def test_an_any_value_key_never_makes_a_row_incorrect_but_a_listed_wrong_value_still_does(self) -> None:
+        _node(EXCEPTION, {"name": "wrong-zone"}, {"team": "a", "zone": "blue"})
+        _node(EXCEPTION, {"name": "ok"}, {"team": "a", "zone": "red"})
+        e = Entity.objects.create(entity_type=EXCEPTION, name="odd-team")
+        Entity.objects.filter(pk=e.pk).update(
+            dimensions={"team": 5, "zone": "red"}
+        )  # a non-string value is still present
+        got = {
+            r["name"]: r["status"]
+            for r in dimension_mapping_entities(
+                Search(), {"mappings": [{"entity_type": EXCEPTION, "keys": [TEAM_ANY, ZONE]}]}, db_alias="default"
+            )["rows"]
+        }
+        assert got == {"wrong-zone": "mapped_incorrectly", "ok": "mapped", "odd-team": "mapped"}
 
 
 class TestGroupedEntities:
@@ -209,6 +237,8 @@ class TestGroupedInputs:
         [
             ({"keys": [TEAM_ANY]}, "exactly one"),
             ({"entity_type": EXCEPTION, "entity_types": [EXCEPTION], "keys": [TEAM_ANY]}, "exactly one"),
+            ({"entity_type": None, "entity_types": [EXCEPTION], "keys": [TEAM_ANY]}, "exactly one"),
+            ({"entity_type": EXCEPTION, "entity_types": None, "keys": [TEAM_ANY]}, "exactly one"),
             ({"entity_types": [], "keys": [TEAM_ANY]}, "entity_types"),
             ({"entity_types": "x", "keys": [TEAM_ANY]}, "entity_types"),
             ({"entity_types": [EXCEPTION, 5], "keys": [TEAM_ANY]}, "entity_types"),
