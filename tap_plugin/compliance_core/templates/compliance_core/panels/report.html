@@ -1,0 +1,64 @@
+<div class="tap-panel tap-panel--report">
+{% if not panel.config.hide_header %}{% include "tap_web/panel_header.html" %}{% endif %}
+{% if state == "bad_config" %}
+<p class="rpt-note">Panel config invalid: {{ detail }}</p>
+{% else %}
+<article class="rpt{% if page_break_before %} rpt--break{% endif %}">
+  {% if cut_line %}<p class="rpt-cut" role="separator"><span>{{ cut_line }}</span></p>{% endif %}
+  {% if title %}<h1 class="rpt-title">{{ title }}</h1>{% endif %}
+  {% if as_of %}<p class="rpt-asof">As Of {{ as_of }}</p>{% endif %}
+  {% for section in sections %}
+  <section class="rpt-section">
+    <h2 class="rpt-heading">{{ section.heading }}</h2>
+    {% for item in section.items %}
+      {% if item.kind == "figure" %}
+      <p class="rpt-figure"><span class="rpt-label">{{ item.label }}</span><span class="rpt-leader"></span><span class="rpt-value">{{ item.value }}{% if item.of %} of {{ item.of }}{% endif %}</span></p>
+      {% elif item.kind == "list" %}
+      <table class="rpt-list">
+        <thead><tr><th scope="col">{{ item.title }}</th>{% for c in item.columns %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for r in item.rows %}<tr><th scope="row">{{ r.label }}</th>{% for c in r.cells %}<td>{{ c }}</td>{% endfor %}</tr>
+        {% empty %}<tr><td colspan="{{ item.columns|length|add:1 }}">{% if item.unavailable %}{{ not_observed }}{% else %}None{% endif %}</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      {% if item.omitted %}<p class="rpt-note">{{ item.omitted }} more not shown.</p>{% endif %}
+      {% elif item.kind == "trend" %}
+      <figure class="rpt-trend">
+        <figcaption class="rpt-label">{{ item.label }}</figcaption>
+        {% if item.trend.empty %}
+        <p class="rpt-note">No data yet</p>
+        {% else %}
+        {% with t=item.trend f=item.trend.frame %}
+        <svg viewBox="0 0 {{ f.width }} {{ f.height }}" role="img" class="rpt-svg">
+          <title>{{ item.label }}: {% for l in t.lines %}{{ l.label }}{% if not forloop.last %}, {% endif %}{% endfor %}, {{ t.x_first }} to {{ t.x_last }}, scale {{ t.y_min }} to {{ t.y_max }}</title>
+          <line class="rpt-base" x1="{{ f.left }}" y1="{{ f.base }}" x2="{{ f.right }}" y2="{{ f.base }}" />
+          <text class="rpt-axis" x="{{ f.left }}" y="{{ f.top }}" text-anchor="end" dx="-4" dy="4">{{ t.y_max }}</text>
+          <text class="rpt-axis" x="{{ f.left }}" y="{{ f.base }}" text-anchor="end" dx="-4" dy="3">{{ t.y_min }}</text>
+          <text class="rpt-axis" x="{{ f.left }}" y="{{ f.label_y }}" text-anchor="start">{{ t.x_first }}</text>
+          <text class="rpt-axis" x="{{ f.right }}" y="{{ f.label_y }}" text-anchor="end">{{ t.x_last }}</text>
+          {% for l in t.lines %}
+            {% if l.points %}<polyline class="rpt-line" fill="none" points="{{ l.points }}"{% if l.dash %} stroke-dasharray="{{ l.dash }}"{% endif %} />{% endif %}
+            {% if l.single %}<circle class="rpt-dot" cx="{{ l.single.0 }}" cy="{{ l.single.1 }}" r="2" />{% endif %}
+            {% if l.end_x %}<text class="rpt-end" x="{{ l.end_x }}" y="{{ l.end_y }}">{{ l.label }} {{ l.end_value }}</text>{% endif %}
+          {% endfor %}
+        </svg>
+        <table class="rpt-sr">
+          <caption>{{ item.label }}</caption>
+          <thead><tr><th scope="col">Line</th><th scope="col">Time</th><th scope="col">Value</th></tr></thead>
+          <tbody>{% for l in t.lines %}{% for p in l.table %}<tr><th scope="row">{{ l.label }}</th><td>{{ p.x }}</td><td>{{ p.value }}</td></tr>{% endfor %}{% endfor %}</tbody>
+        </table>
+        {% endwith %}
+        {% endif %}
+      </figure>
+      {% elif item.kind == "rule" %}
+      <hr class="rpt-rule" />
+      {% else %}
+      <p class="rpt-note">{{ item.text }}</p>
+      {% endif %}
+    {% endfor %}
+  </section>
+  {% endfor %}
+  {% for name in failed %}<p class="rpt-note">Search unavailable: {{ name }}</p>{% endfor %}
+</article>
+{% endif %}
+</div>
