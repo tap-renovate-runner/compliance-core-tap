@@ -196,7 +196,7 @@ layer.
 | req-compliance-core-search-snapshot | [Search Snapshot Modeling](#search-snapshot-modeling) | Implemented | `compliance_search_snapshot`: one run of one Search, with its result rows held inside the node, keyed by the Search and the run time, and an edge to the Search it ran. |
 | req-compliance-core-search-snapshot-collector | [Search Snapshot Collector Base](#search-snapshot-collector-base) | Implemented | `SearchSnapshotCollector`: an abstract collector that runs the Searches a subclass names and writes one snapshot per Search per run. compliance_core registers none. |
 | req-compliance-core-search-snapshot-series | [Search Snapshot Series](#search-snapshot-series) | Implemented | The `search-snapshot-series` `module` Search runner: the rows of a Search's snapshots read back as one row per snapshot time and series, with a plain-average aggregate series, for a line chart. |
-| req-compliance-core-panel-report | [Report Panel](#report-panel) | Proposed | The `report` panel type: a plain, print-ready report of figures, trend lines and short lists, each read from a Search the panel is linked to, drawn as text and vector lines with no script. |
+| req-compliance-core-panel-report | [Report Panel](#report-panel) | Implemented | The `report` panel type: a plain, print-ready report of figures, trend lines and short lists, each read from a Search the panel is linked to, drawn as text and vector lines with no script. |
 
 ### Plugin Scope
 ----
@@ -1245,7 +1245,7 @@ A data-driven way to name the Searches (a dimension stamp on the Search, or an e
 ----
 RID: `req-compliance-core-panel-report`
 
-Status: `Proposed`
+Status: `Implemented`
 
 A coverage or compliance report is read by leadership and sent to agencies, and it has to look like a report: a title, sections, lines of label and figure, a few trend lines, and nothing that reads as a web page. The standard panels bind one Search and draw cards or tables, which is the wrong shape. The `report` panel type draws a whole report from several Searches, as plain text and vector lines that print as they appear and paste into a presentation as they are. It ships in this plugin because the figures it reports (coverage, totals, snapshots) are this plugin's, and it names no regime: what a report says is the instance's data. Ruled by George, 2026-10-21: a panel with its own logic, in `compliance_core`, with the trend charts drawn inside it.
 
@@ -1288,23 +1288,23 @@ An item is one of:
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | :---: | --- | --- |
-| req-compliance-core-panel-report-1 | Registered | Proposed | The `report` panel type is on the panel registry under `report`, declares its stylesheet and no script, and its config schema describes every property and refuses unknown keys. | As `req-vuln-mosaic-panel-cve-1`. |
-| req-compliance-core-panel-report-2 | Only Linked Searches | Proposed | A line naming a Search the panel has no `USES_SEARCH` edge to renders a configuration error and runs no Search for it. | |
-| req-compliance-core-panel-report-3 | One Run Per Search | Proposed | A Search named by several lines is run once per render. | |
-| req-compliance-core-panel-report-4 | Figure Lines | Proposed | A `figure` shows its label, its formatted value and an optional `of <n>`, taking the value from the named row or the first row where `where` matches. | |
-| req-compliance-core-panel-report-5 | Formats | Proposed | `count`, `percent`, `date`, `datetime` and `text` format as stated; a value that does not fit its format is shown as `Not observed`. | |
-| req-compliance-core-panel-report-6 | Not Observed Is Not Zero | Proposed | A failed Search, a missing row and a `null` field each render `Not observed`, never `0` or blank, and a failed Search is named in a footnote without its error text. | |
-| req-compliance-core-panel-report-7 | Lists | Proposed | A `list` renders one row per Search row, up to `limit`, with at most four columns and no cell borders, and says how many rows were left out. | |
-| req-compliance-core-panel-report-8 | Trends Drawn In The Panel | Proposed | A `trend` renders inline SVG with one line per `lines` entry, direct end labels, a baseline and the first and last time labels, using no JavaScript and no external asset. | |
-| req-compliance-core-panel-report-9 | Fixed Y Range | Proposed | The trend's y range is `y_min` to `y_max` (default 0 to 100) and does not rescale to the data. | |
-| req-compliance-core-panel-report-10 | Series Filter | Proposed | A `lines` entry with `series_field` and `series` keeps only rows whose field equals the value, ordered by `x_field`; with none, all rows. | For the `Overall` line of a coverage history. |
-| req-compliance-core-panel-report-11 | Empty Trend Is Stated | Proposed | A trend with no points renders `No data yet`, not an empty frame or a zero line. | |
-| req-compliance-core-panel-report-12 | Accessible Data | Proposed | Each trend SVG has a `<title>` and a visually hidden table of its points. | As the chart panel. |
-| req-compliance-core-panel-report-13 | Plain Style | Proposed | The stylesheet sets no background, border, shadow or radius on items, uses at most one grey besides the text colour, and encodes no meaning in colour alone. | |
-| req-compliance-core-panel-report-14 | Prints As Shown | Proposed | A `@media print` block fits the report to a portrait page, keeps each section unbroken, and honours `page_break_before`. | Checked in a browser print preview. |
-| req-compliance-core-panel-report-15 | Cut Line | Proposed | A report with `cut_line` begins with a dashed hairline carrying that word, and a report without it draws none. | The agency report carries none; the internal one carries `Internal`. |
-| req-compliance-core-panel-report-16 | Escaped | Proposed | Config and row strings are escaped, config holds no HTML, and a row value containing markup renders as text. | |
-| req-compliance-core-panel-report-17 | Reads Only | Proposed | The panel writes no node or edge and runs only Searches it is linked to. | |
+| req-compliance-core-panel-report-1 | Registered | Implemented | The `report` panel type is on the panel registry under `report`, declares its stylesheet and no script, and its config schema describes every property and refuses unknown keys. | As `req-vuln-mosaic-panel-cve-1`. |
+| req-compliance-core-panel-report-2 | Only Linked Searches | Implemented | A line naming a Search the panel has no `USES_SEARCH` edge to renders a configuration error and runs no Search for it. | |
+| req-compliance-core-panel-report-3 | One Run Per Search | Implemented | A Search named by several lines is run once per render. | |
+| req-compliance-core-panel-report-4 | Figure Lines | Implemented | A `figure` shows its label, its formatted value and an optional `of <n>`, taking the value from the named row or the first row where `where` matches. | |
+| req-compliance-core-panel-report-5 | Formats | Implemented | `count`, `percent`, `date`, `datetime` and `text` format as stated; a value that does not fit its format is shown as `Not observed`. | |
+| req-compliance-core-panel-report-6 | Not Observed Is Not Zero | Implemented | A failed Search, a missing row and a `null` field each render `Not observed`, never `0` or blank, and a failed Search is named in a footnote without its error text. | |
+| req-compliance-core-panel-report-7 | Lists | Implemented | A `list` renders one row per Search row, up to `limit`, with at most four columns and no cell borders, and says how many rows were left out. | |
+| req-compliance-core-panel-report-8 | Trends Drawn In The Panel | Implemented | A `trend` renders inline SVG with one line per `lines` entry, direct end labels, a baseline and the first and last time labels, using no JavaScript and no external asset. | |
+| req-compliance-core-panel-report-9 | Fixed Y Range | Implemented | The trend's y range is `y_min` to `y_max` (default 0 to 100) and does not rescale to the data. | |
+| req-compliance-core-panel-report-10 | Series Filter | Implemented | A `lines` entry with `series_field` and `series` keeps only rows whose field equals the value, ordered by `x_field`; with none, all rows. | For the `Overall` line of a coverage history. |
+| req-compliance-core-panel-report-11 | Empty Trend Is Stated | Implemented | A trend with no points renders `No data yet`, not an empty frame or a zero line. | |
+| req-compliance-core-panel-report-12 | Accessible Data | Implemented | Each trend SVG has a `<title>` and a visually hidden table of its points. | As the chart panel. |
+| req-compliance-core-panel-report-13 | Plain Style | Implemented | The stylesheet sets no background, border, shadow or radius on items, uses at most one grey besides the text colour, and encodes no meaning in colour alone. | |
+| req-compliance-core-panel-report-14 | Prints As Shown | In Development | A `@media print` block fits the report to a portrait page, keeps each section unbroken, and honours `page_break_before`. | Checked in a browser print preview. |
+| req-compliance-core-panel-report-15 | Cut Line | Implemented | A report with `cut_line` begins with a dashed hairline carrying that word, and a report without it draws none. | The agency report carries none; the internal one carries `Internal`. |
+| req-compliance-core-panel-report-16 | Escaped | Implemented | Config and row strings are escaped, config holds no HTML, and a row value containing markup renders as text. | |
+| req-compliance-core-panel-report-17 | Reads Only | Implemented | The panel writes no node or edge and runs only Searches it is linked to. | |
 
 ### Naming Discipline
 ----
