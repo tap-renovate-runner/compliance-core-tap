@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.10](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.9...v0.8.10) (2026-10-22)
+
+
+### Features
+
+* **compliance_core:** the report panel type ([521b834](https://github.com/unified-systems-com/compliance-core-tap/commit/521b834a511d26570d8d11c5d7648a617b029470))
+* **compliance_core:** the report panel type ([55b80b9](https://github.com/unified-systems-com/compliance-core-tap/commit/55b80b95fddcb2741ea087dd11b7017dd97051b3))
+
+
+### Bug Fixes
+
+* **compliance_core:** a failed trend Search reads Not observed, not No data yet ([3ee510c](https://github.com/unified-systems-com/compliance-core-tap/commit/3ee510cd480684364335d630b4c91b20665b5015))
+* **compliance_core:** report panel review fixes ([530be4e](https://github.com/unified-systems-com/compliance-core-tap/commit/530be4e8648b4a588e8cb8f363d8929511d22767))
+
+
+### Documentation
+
+* **spec:** the report panel type ([b3985f2](https://github.com/unified-systems-com/compliance-core-tap/commit/b3985f236720c838e6703082711dee3a477c864c))
+* **spec:** the report panel, a plain print-ready report drawn from Searches ([89f0d5a](https://github.com/unified-systems-com/compliance-core-tap/commit/89f0d5aa9388e9f34f1f323b1caac4162827a76a))
+
 ## [0.8.9](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.8...v0.8.9) (2026-10-21)
 
 
