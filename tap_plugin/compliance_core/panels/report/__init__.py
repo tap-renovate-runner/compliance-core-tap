@@ -158,6 +158,7 @@ REPORT_PANEL_CONFIG_SCHEMA: dict[str, Any] = {
                         "type": "object",
                         "additionalProperties": False,
                         "required": ["label", "search", "x_field", "value_field"],
+                        "dependentRequired": {"series_field": ["series"], "series": ["series_field"]},
                         "properties": {
                             "label": {"description": "The line's name, written at its end.", **_STR},
                             "search": {"description": "Entity id of a linked Search.", **_STR},
@@ -213,8 +214,9 @@ def _run(search: Any, request: HttpRequest | None) -> list[dict[str, Any]] | Non
 
         inputs = inputs_from_query(search, request.GET) if request is not None else {}
         result = execute_search(search, inputs or None, layer="extended")
-    except Exception:  # noqa: BLE001
-        logger.exception("[7d1c] report panel search %s failed", getattr(search, "entity_id", "?"))
+    except Exception as exc:  # noqa: BLE001
+        # The error text may carry query fragments or credentials, so only the Search id and the exception class are logged.
+        logger.error("[7d1c] report panel search %s failed (%s)", getattr(search, "entity_id", "?"), type(exc).__name__)
         return None
     envelope = result["results"] if "results" in result else result
     return [r for r in (envelope.get("rows") or []) if isinstance(r, dict)]

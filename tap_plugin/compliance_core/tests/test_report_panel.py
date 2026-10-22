@@ -311,6 +311,26 @@ class TestTrends:
         assert len(out["lines"][0]["table"]) == 1 and out["lines"][0]["single"] is not None
 
 
+class TestConfigPairs:
+    @pytest.mark.spec("req-compliance-core-panel-report-10")
+    @pytest.mark.parametrize("half", [{"series_field": "series"}, {"series": "Overall"}])
+    def test_a_series_filter_needs_both_halves(self, half: dict[str, str]) -> None:
+        s = _search("p")
+        line = {"label": "L", "search": str(s.pk), "x_field": "at", "value_field": "value", **half}
+        panel = _panel(report([{"kind": "trend", "label": "T", "lines": [line]}]), [s])
+        assert context(panel)["state"] == "bad_config"
+
+    @pytest.mark.spec("req-compliance-core-panel-report-6")
+    def test_a_failed_search_logs_its_class_and_never_its_message(
+        self, results: dict[str, Any], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        s = _search("boom")
+        results["boom"] = RuntimeError("secret detail")
+        context(_panel(report([fig("N", s, "n")]), [s]))
+        text = " ".join(r.getMessage() for r in caplog.records) + " ".join(str(r.exc_info) for r in caplog.records)
+        assert "RuntimeError" in text and "secret detail" not in text
+
+
 class TestStyleAndSafety:
     @pytest.mark.spec("req-compliance-core-panel-report-13")
     def test_the_stylesheet_is_plain(self) -> None:
@@ -320,7 +340,7 @@ class TestStyleAndSafety:
         import re
 
         colours = set(re.findall(r"#[0-9a-fA-F]{3,6}", css))
-        assert colours <= {"#111", "#555", "#bbb"}, colours  # the text colour and greys; no hue
+        assert colours <= {"#111", "#555"}, colours  # the text colour and one grey; no hue
 
     @pytest.mark.spec("req-compliance-core-panel-report-14")
     def test_it_has_a_print_block_that_keeps_sections_and_honours_the_break(self) -> None:

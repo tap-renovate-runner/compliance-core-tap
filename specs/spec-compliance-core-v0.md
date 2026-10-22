@@ -1301,7 +1301,7 @@ An item is one of:
 | req-compliance-core-panel-report-11 | Empty Trend Is Stated | Implemented | A trend with no points renders `No data yet`, not an empty frame or a zero line. | |
 | req-compliance-core-panel-report-12 | Accessible Data | Implemented | Each trend SVG has a `<title>` and a visually hidden table of its points. | As the chart panel. |
 | req-compliance-core-panel-report-13 | Plain Style | Implemented | The stylesheet sets no background, border, shadow or radius on items, uses at most one grey besides the text colour, and encodes no meaning in colour alone. | |
-| req-compliance-core-panel-report-14 | Prints As Shown | Implemented | A `@media print` block fits the report to a portrait page, keeps each section unbroken, and honours `page_break_before`. | Checked in a browser print preview. |
+| req-compliance-core-panel-report-14 | Prints As Shown | In Development | A `@media print` block fits the report to a portrait page, keeps each section unbroken, and honours `page_break_before`. | Checked in a browser print preview. |
 | req-compliance-core-panel-report-15 | Cut Line | Implemented | A report with `cut_line` begins with a dashed hairline carrying that word, and a report without it draws none. | The agency report carries none; the internal one carries `Internal`. |
 | req-compliance-core-panel-report-16 | Escaped | Implemented | Config and row strings are escaped, config holds no HTML, and a row value containing markup renders as text. | |
 | req-compliance-core-panel-report-17 | Reads Only | Implemented | The panel writes no node or edge and runs only Searches it is linked to. | |
