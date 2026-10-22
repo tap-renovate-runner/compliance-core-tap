@@ -26,7 +26,7 @@
       <figure class="rpt-trend">
         <figcaption class="rpt-label">{{ item.label }}</figcaption>
         {% if item.trend.empty %}
-        <p class="rpt-note">No data yet</p>
+        <p class="rpt-note">{% if item.unavailable %}{{ not_observed }}{% else %}No data yet{% endif %}</p>
         {% else %}
         {% with t=item.trend f=item.trend.frame %}
         <svg viewBox="0 0 {{ f.width }} {{ f.height }}" role="img" class="rpt-svg">
@@ -49,6 +49,7 @@
         </table>
         {% endwith %}
         {% endif %}
+        {% for name in item.unavailable %}<p class="rpt-note">{{ name }}: {{ not_observed }}</p>{% endfor %}
       </figure>
       {% elif item.kind == "rule" %}
       <hr class="rpt-rule" />

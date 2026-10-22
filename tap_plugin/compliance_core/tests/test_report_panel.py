@@ -311,6 +311,28 @@ class TestTrends:
         assert len(out["lines"][0]["table"]) == 1 and out["lines"][0]["single"] is not None
 
 
+class TestFailedTrends:
+    LINE = {"label": "Overall", "x_field": "at", "value_field": "value"}
+
+    @pytest.mark.spec("req-compliance-core-panel-report-11")
+    @pytest.mark.spec("req-compliance-core-panel-report-6")
+    def test_a_failed_trend_search_is_not_observed_not_no_data_yet(self, results: dict[str, Any]) -> None:
+        s = _search("boomtrend")
+        results["boomtrend"] = RuntimeError("x")
+        trend = {"kind": "trend", "label": "T", "lines": [{**self.LINE, "search": str(s.pk)}]}
+        html = render(_panel(report([trend]), [s]))
+        assert "Not observed" in html and "No data yet" not in html
+
+    @pytest.mark.spec("req-compliance-core-panel-report-6")
+    def test_one_failed_line_among_drawn_ones_is_named(self, results: dict[str, Any]) -> None:
+        good, bad = _search("goodtrend"), _search("badtrend")
+        results["goodtrend"] = [{"at": "2026-10-20T00:00:00Z", "value": 5}, {"at": "2026-10-21T00:00:00Z", "value": 6}]
+        results["badtrend"] = RuntimeError("x")
+        lines = [{**self.LINE, "search": str(good.pk)}, {**self.LINE, "label": "Responsibility", "search": str(bad.pk)}]
+        html = render(_panel(report([{"kind": "trend", "label": "T", "lines": lines}]), [good, bad]))
+        assert "<polyline" in html and "Responsibility: Not observed" in html
+
+
 class TestConfigPairs:
     @pytest.mark.spec("req-compliance-core-panel-report-10")
     @pytest.mark.parametrize("half", [{"series_field": "series"}, {"series": "Overall"}])

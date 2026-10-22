@@ -301,4 +301,6 @@ class ReportPanelType:
                 "unavailable": rows.get(item["search"]) is None,
             }
         trend = build_trend(item["lines"], rows, float(item.get("y_min", 0)), float(item.get("y_max", 100)))
-        return {"kind": "trend", "label": item["label"], "trend": trend}
+        # A Search that failed is not "no data": its line is named as Not observed beside whatever else drew.
+        unavailable = [line["label"] for line in item["lines"] if rows.get(line["search"]) is None]
+        return {"kind": "trend", "label": item["label"], "trend": trend, "unavailable": unavailable}
