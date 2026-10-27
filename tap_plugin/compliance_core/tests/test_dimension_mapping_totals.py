@@ -13,7 +13,10 @@ import tap_plugin.compliance_core.models as compliance  # noqa: F401 - trigger m
 from tap_plugin.compliance_core import coverage
 from tap_plugin.compliance_core.searches import dimension_mapping_totals as totals_module
 from tap_plugin.compliance_core.searches import snapshot_series
-from tap_plugin.compliance_core.searches.dimension_mapping_totals import dimension_mapping_totals
+from tap_plugin.compliance_core.searches.dimension_mapping_totals import (
+    dimension_mapping_totals,
+    dimension_mapping_totals_set,
+)
 
 from tap_grid.models import Entity, Search
 from tap_grid.search import execute_search
@@ -257,3 +260,85 @@ class TestRunner:
         )
         envelope = execute_search(search, {})
         assert len(envelope["rows"]) == 1 and envelope["nodes"] == [] and envelope["edges"] == []
+
+
+FIELDS = (
+    "groups", "percent_overall", "denominator", "mapped", "unmapped", "mapped_incorrectly", "no_rule", "percent_pooled",
+)  # fmt: skip
+
+
+def run_set(summaries: Any) -> dict[str, Any]:
+    return dimension_mapping_totals_set(Search(), {"summaries": summaries}, db_alias="default")  # type: ignore[arg-type]
+
+
+class TestRunnerSet:
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-totals-set-1")
+    def test_it_is_registered_from_the_manifest(self) -> None:
+        from tap_grid.registry import get_search_runner
+
+        key = "tap_plugin.compliance_core.searches.dimension_mapping_totals:dimension-mapping-totals-set"
+        assert get_search_runner(key) is dimension_mapping_totals_set
+
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-totals-set-2")
+    def test_two_summaries_give_one_row_each_equal_to_the_single_runner(self) -> None:
+        _build()
+        one = _summary_search("one")
+        two = _summary_search(
+            "two",
+            mappings=[{"entity_type": EXCEPTION, "keys": [{"key": "team"}]}],
+            group_by="inventory",
+            exclude_groups=["apps"],
+        )
+        out = run_set(
+            [
+                {"key": "resp", "label": "Responsibility", "summary_search_id": str(one.pk)},
+                {"key": "data_class", "summary_search_id": str(two.pk)},
+            ]
+        )
+        json.dumps(out)
+        assert out["nodes"] == [] and out["edges"] == [] and out["info"] == {"row_count": 2}
+        assert [(r["key"], r["label"]) for r in out["rows"]] == [("resp", "Responsibility"), ("data_class", "data_class")]
+        for row, search in zip(out["rows"], (one, two), strict=True):
+            assert set(row) == {"key", "label", "percent_text", *FIELDS}
+            assert row["percent_text"] == f"{round(row['percent_overall'], 1)}%"
+            single = run(search)["rows"][0]
+            assert {f: row[f] for f in FIELDS} == {f: single[f] for f in FIELDS}
+        assert out["rows"][0]["denominator"] != out["rows"][1]["denominator"]
+
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-totals-set-3")
+    def test_warnings_are_the_summaries_own_concatenated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _build()
+        a, b = _summary_search("a"), _summary_search("b")
+        real = totals_module.dimension_mapping_summary
+
+        def fake(summary: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            out = real(summary, *args, **kwargs)
+            return {**out, "warnings": [f"w-{summary.name}"]}
+
+        monkeypatch.setattr(totals_module, "dimension_mapping_summary", fake)
+        out = run_set([{"key": "a", "summary_search_id": str(a.pk)}, {"key": "b", "summary_search_id": str(b.pk)}])
+        assert out["warnings"] == ["w-a", "w-b"]
+
+    @pytest.mark.spec("req-compliance-core-dimension-mapping-totals-set-4")
+    def test_bad_input_is_refused(self) -> None:
+        _build()
+        ok = str(_summary_search().pk)
+        node = _node(EXCEPTION, {"name": "x"})
+        for bad in (
+            [],
+            None,
+            "x",
+            [{"key": "a", "summary_search_id": ok}, {"key": "a", "summary_search_id": ok}],
+            [{"key": "A", "summary_search_id": ok}],
+            [{"key": "1a", "summary_search_id": ok}],
+            [{"key": "a-b", "summary_search_id": ok}],
+            [{"key": "", "summary_search_id": ok}],
+            [{"key": "a", "label": "", "summary_search_id": ok}],
+            [{"key": "a", "label": 3, "summary_search_id": ok}],
+            [{"summary_search_id": ok}],
+            ["a"],
+            [{"key": "a", "summary_search_id": str(node.pk)}],
+            [{"key": "a", "summary_search_id": ok}, {"key": "b", "summary_search_id": None}],
+        ):
+            with pytest.raises(ValueError):
+                run_set(bad)

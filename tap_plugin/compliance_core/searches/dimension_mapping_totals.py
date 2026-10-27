@@ -12,6 +12,7 @@ Input: ``summary_search_id``, required, the entity id of a ``search`` node whose
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from django.core.exceptions import ValidationError
@@ -24,6 +25,7 @@ from .dimension_mapping import dimension_mapping_summary
 
 SUMMARY_RUNNER = "tap_plugin.compliance_core.searches.dimension_mapping:dimension-mapping-summary"
 _SUMMARY_INPUTS = ("mappings", "group_by", "exclude_groups")
+_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def _summary_search(summary_search_id: Any, *, db_alias: str) -> Any:
@@ -67,3 +69,45 @@ def dimension_mapping_totals(
     out = dimension_mapping_summary(summary, _defaults(summary), db_alias=db_alias, layer=layer)
     row = totals_from_rows(out["rows"])
     return {"nodes": [], "edges": [], "rows": [row], "info": {"row_count": 1}, "warnings": out["warnings"]}
+
+
+def _summaries(raw: Any) -> list[tuple[str, str, Any]]:
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("summaries must be a non-empty array")
+    seen: set[str] = set()
+    out: list[tuple[str, str, Any]] = []
+    for item in raw:
+        key = item.get("key") if isinstance(item, dict) else None
+        if not isinstance(key, str) or not _KEY.fullmatch(key):
+            raise ValueError(f"summaries key {key!r} must match ^[a-z][a-z0-9_]*$")
+        if key in seen:
+            raise ValueError(f"summaries key {key} is repeated")
+        seen.add(key)
+        label = item.get("label", key)
+        if not isinstance(label, str) or not label:
+            raise ValueError(f"summaries label for {key} must be a non-empty string")
+        out.append((key, label, item.get("summary_search_id")))
+    return out
+
+
+def dimension_mapping_totals_set(
+    search: Search, inputs: dict[str, Any], *, db_alias: str, layer: str = "full"
+) -> dict[str, Any]:
+    """One row per summary, in array order: `key`, `label`, then the same fields `dimension-mapping-totals` returns, then
+    `percent_text`, `percent_overall` to one decimal with a `%` (`None` when there is none), for a card that shows it as it is.
+    `warnings` are the summaries' own, concatenated. Input `summaries`: a non-empty array of `{key, label?, summary_search_id}`
+    (`label` defaults to `key`).
+
+    req-compliance-core-dimension-mapping-totals-set
+    """
+    triples = _summaries(inputs.get("summaries"))
+    searches = [(key, label, _summary_search(sid, db_alias=db_alias)) for key, label, sid in triples]  # validate all first
+    rows: list[dict[str, Any]] = []
+    warnings: list[Any] = []
+    for key, label, summary in searches:
+        out = dimension_mapping_summary(summary, _defaults(summary), db_alias=db_alias, layer=layer)
+        totals = totals_from_rows(out["rows"])
+        percent = totals["percent_overall"]
+        rows.append({"key": key, "label": label, **totals, "percent_text": None if percent is None else f"{round(percent, 1)}%"})
+        warnings.extend(out["warnings"])
+    return {"nodes": [], "edges": [], "rows": rows, "info": {"row_count": len(rows)}, "warnings": warnings}
