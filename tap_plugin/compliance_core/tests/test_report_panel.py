@@ -362,7 +362,17 @@ class TestStyleAndSafety:
         import re
 
         colours = set(re.findall(r"#[0-9a-fA-F]{3,6}", css))
-        assert colours <= {"#111", "#555"}, colours  # the text colour and one grey; no hue
+        assert colours <= {"#111", "#555", "#f1f5f9", "#cbd5e1"}, colours  # ink and one grey, light and dark; no hue
+
+    @pytest.mark.spec("req-compliance-core-panel-report-13")
+    def test_the_ink_and_grey_follow_the_theme_on_screen_and_stay_dark_on_paper(self) -> None:
+        """A hard-coded #111 is black on the dark theme's dark page; the colours are tokens the theme overrides."""
+        css = (PACKAGE / "static" / "compliance_core" / "css" / "report.css").read_text(encoding="utf-8")
+        assert ".tap-panel--report { --rpt-ink: #111; --rpt-muted: #555; }" in css
+        assert '@media screen and (prefers-color-scheme: dark)' in css
+        assert ':root:not([data-theme="light"]) .tap-panel--report { --rpt-ink: #f1f5f9; --rpt-muted: #cbd5e1; }' in css
+        assert ':root[data-theme="dark"] .tap-panel--report { --rpt-ink: #f1f5f9; --rpt-muted: #cbd5e1; }' in css
+        assert "@media screen {" in css  # the forced-dark values never reach a print
 
     @pytest.mark.spec("req-compliance-core-panel-report-14")
     def test_it_has_a_print_block_that_keeps_sections_and_honours_the_break(self) -> None:
