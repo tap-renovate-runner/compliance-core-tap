@@ -1,0 +1,51 @@
+# Label the fork bot's release PR `autorelease: pending`.
+#
+# release-please finds its own open and merged release PRs by that label alone. The fork bot
+# is an outside user with no role here, and applying a label needs triage access, so the bot
+# opens the PR unlabelled (org-bots README, "Label each new release PR"). This workflow is the
+# one place the label is applied: it runs in THIS repository, from the default branch's copy
+# of this file (`pull_request_target`), with this repository's own `GITHUB_TOKEN`. No new
+# credential exists and the bot gains no rights.
+#
+# Nothing from the pull request is checked out or run, and no PR-controlled text reaches a
+# shell: the only value used there is the PR number, passed through the environment. Who may
+# trigger the label is decided by numeric ids and shapes, never by a login or a title alone:
+#   - the PR author is the fork bot (id 347434375, type User; a login can be renamed and
+#     re-registered, an id cannot; the same id org-bots' FORK_BOT_ID holds);
+#   - the PR comes from a fork owned by that same id;
+#   - the head branch is release-please's own;
+#   - the base is this repository's default branch.
+# Anything else is left alone, unlabelled.
+name: Label release PR
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+concurrency:
+  group: label-release-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  label:
+    if: >-
+      github.event.pull_request.user.id == 347434375
+      && github.event.pull_request.user.type == 'User'
+      && github.event.pull_request.head.repo.fork == true
+      && github.event.pull_request.head.repo.owner.id == 347434375
+      && startsWith(github.event.pull_request.head.ref, 'release-please--branches--')
+      && github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write  # add the label to the PR
+    steps:
+      - name: Add the autorelease label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr edit "$PR_NUMBER" --add-label "autorelease: pending"
