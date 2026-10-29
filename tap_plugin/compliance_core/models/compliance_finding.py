@@ -104,9 +104,10 @@ class ComplianceFinding(BaseModel):
     #: When the producer first detected this finding, as the producer's own record gives it (a
     #: GitHub alert's `created_at`; the production time of the earliest SBOM that reported it).
     #: `null` is unobserved: no source supplied it, and it is never defaulted to the time this grid
-    #: first saw the finding. Not part of the identity. A producer that re-sends a finding must send
-    #: this value again, because a node under an existing key replaces the row and an omitted field
-    #: goes back to null (`req-compliance-core-finding-detection`).
+    #: first saw the finding. Not part of the identity. On a core with the keep-absent upsert, a node under
+    #: an existing key changes only the fields it carries: omitting this keeps the stored value and an
+    #: explicit null clears it; an older core replaces the row
+    #: (`req-compliance-core-finding-detection`).
     first_detected_at = models.DateTimeField(
         null=True,
         blank=True,

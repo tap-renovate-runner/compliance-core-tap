@@ -872,7 +872,7 @@ A finding records when its producer first detected it. Compliance and vulnerabil
 
 - `null` is unobserved. It is never defaulted to the time this grid first saw the finding, which is ingestion time and not detection time.
 - It is not part of the natural key, which stays `("source", "source_key")`. A corrected time is the same finding.
-- A node sent under an existing key replaces the row, so a field the node omits goes back to null. A producer that re-sends a finding must send `first_detected_at` again, carrying the earliest value it knows and never re-stamping it with the time of the latest scan. compliance_core cannot enforce this; it is the producer's duty, and a test pins the platform behaviour it rests on.
+- A node sent under an existing key is an upsert that changes only the fields it carries (Issue# 1128 - tap): a field the node omits keeps its stored value, a field it carries is replaced whole, and an explicit `null` clears it. On a core release before that change the node replaced the row and an omitted field went back to null, so a producer that must work against both still sends `first_detected_at` again; when it does send it, it carries the earliest value it knows and never re-stamps it with the time of the latest scan, and it sends `null` only to clear the field on purpose. compliance_core cannot enforce this; it is the producer's duty, and tests pin the platform behaviour it rests on.
 
 Existing findings carry `null` until their producer next writes one. There is no backfill.
 
@@ -885,7 +885,7 @@ Existing findings carry `null` until their producer next writes one. There is no
 | req-compliance-core-finding-detection-3 | Checked As A Date-Time | Implemented | A value that is not an ISO date-time string with a time part (or null) is refused, a bare date included: the date-time field would read it as midnight and invent a precision the producer never gave. | `::test_a_value_that_is_not_a_date_time_is_refused`, `::test_an_explicit_null_is_accepted` |
 | req-compliance-core-finding-detection-4 | Not Identity | Implemented | A finding re-sent with a different `first_detected_at` is the same node, with the new value. | `::test_it_is_not_part_of_the_identity` |
 | req-compliance-core-finding-detection-6 | A Replaced Value Stays In History | Implemented | After a producer moves or clears `first_detected_at`, every earlier value is still on record in the finding's history. | `::test_a_replaced_value_stays_in_the_findings_history`. The field is mutable by design; this is what makes a bad write recoverable. |
-| req-compliance-core-finding-detection-5 | Resend Duty | Implemented | A finding re-sent without the field goes back to `null`; the producer carries the earliest value forward. | `::test_a_resend_without_it_goes_back_to_unobserved`; pins platform behaviour, not enforced here. |
+| req-compliance-core-finding-detection-5 | Resend Keeps It | Implemented | On a core with the keep-absent upsert, a finding re-sent without the field keeps its stored value; an explicit `null` clears it. An older core replaces the row. | `::test_a_resend_without_it_keeps_the_value` and `::test_an_explicit_null_clears_it`; pin platform behaviour, not enforced here. |
 
 ### Exception Modeling
 ----
