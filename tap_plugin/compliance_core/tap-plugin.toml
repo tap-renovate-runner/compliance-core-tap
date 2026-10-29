@@ -57,4 +57,4 @@ exceptions-due-review = "tap_plugin.compliance_core.searches.exception_coverage.
 [[boot.records]]
 name = "ci"
 description = "RESERVED NAME (req-boot-bootstrap-ci-record): the stack this plugin's own tests run in — depends_on closure + self, offline, credential-free. The consumer flips self to editable."
-sha256 = "b83434d5b2398c449c34bafc2418becff09168bdb6497d7aca7ec4d9707ce622"
+sha256 = "a623eb9b65927de81dae12d58fc77ded4a532a4b1186443da726537682133a6a"
