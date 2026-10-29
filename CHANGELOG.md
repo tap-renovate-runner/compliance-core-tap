@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.11](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.10...v0.8.11) (2026-10-29)
+
+
+### Features
+
+* **search:** dimension-mapping-totals-set, several summaries' totals in one row ([#81](https://github.com/unified-systems-com/compliance-core-tap/issues/81)) ([dba77a8](https://github.com/unified-systems-com/compliance-core-tap/commit/dba77a872cc17a78a7c13bb89769807ca1ccf834))
+
+
+### Bug Fixes
+
+* **report:** the report panel follows the dark theme ([#80](https://github.com/unified-systems-com/compliance-core-tap/issues/80)) ([d4c514f](https://github.com/unified-systems-com/compliance-core-tap/commit/d4c514f1de107d7a2f9ecded8a2c10dd33d6d233))
+
 ## [0.8.10](https://github.com/unified-systems-com/compliance-core-tap/compare/v0.8.9...v0.8.10) (2026-10-22)
 
 
